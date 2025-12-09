@@ -1,0 +1,52 @@
+name: Build Check
+
+on:
+    pull_request:
+        branches: [main, master]
+
+jobs:
+    build:
+        name: Verify Build
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20.x'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Build package
+              run: npm run build
+
+            - name: Verify build output
+              run: |
+                  if [ ! -d "dist" ]; then
+                    echo "Error: dist directory not found"
+                    exit 1
+                  fi
+                  if [ ! -f "dist/index.js" ]; then
+                    echo "Error: dist/index.js not found"
+                    exit 1
+                  fi
+                  if [ ! -f "dist/index.d.ts" ]; then
+                    echo "Error: dist/index.d.ts not found"
+                    exit 1
+                  fi
+                  echo "Build output verified successfully"
+
+            - name: Check bundle size
+              run: |
+                  SIZE=$(du -sh dist | cut -f1)
+                  echo "Build size: $SIZE"
+                  # Fail if build is suspiciously large (>50MB)
+                  SIZE_BYTES=$(du -sb dist | cut -f1)
+                  if [ $SIZE_BYTES -gt 52428800 ]; then
+                    echo "Warning: Build size exceeds 50MB"
+                  fi

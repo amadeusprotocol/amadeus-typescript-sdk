@@ -1,0 +1,80 @@
+{
+	"name": "@amadeus-protocol/sdk",
+	"version": "1.0.1",
+	"description": "Official TypeScript/JavaScript SDK for Amadeus Protocol - Core utilities for serialization, cryptography, transaction building, and API client",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/amadeusprotocol/amadeus-typescript-sdk.git"
+	},
+	"homepage": "https://github.com/amadeusprotocol/amadeus-typescript-sdk#readme",
+	"bugs": {
+		"url": "https://github.com/amadeusprotocol/amadeus-typescript-sdk/issues"
+	},
+	"sideEffects": false,
+	"type": "module",
+	"main": "./dist/index.js",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"build": "tsc -p tsconfig.build.json",
+		"dev": "tsc --watch",
+		"lint": "eslint src",
+		"lint:fix": "eslint src --fix",
+		"prettier:check": "prettier --check .",
+		"prettier:format": "prettier --write .",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"example:basic": "tsx examples/basic-usage.ts",
+		"example:api": "tsx examples/api-usage.ts",
+		"example:tx": "tsx examples/transaction-flow.ts",
+		"prepublishOnly": "npm run build && npm run test && npm run lint",
+		"prepack": "npm run build"
+	},
+	"keywords": [
+		"amadeus",
+		"protocol",
+		"sdk",
+		"blockchain",
+		"ai",
+		"ai-agent",
+		"agi",
+		"nova",
+		"cryptography",
+		"bls12-381",
+		"vecpack",
+		"typescript",
+		"javascript"
+	],
+	"author": "Amadeus Protocol",
+	"license": "MIT",
+	"engines": {
+		"node": ">=20.0.0"
+	},
+	"dependencies": {
+		"@noble/curves": "^1.9.1",
+		"@noble/hashes": "^1.8.0",
+		"bs58": "^6.0.0",
+		"effect": "^3.19.8"
+	},
+	"devDependencies": {
+		"@types/node": "^22.14.0",
+		"@vitest/coverage-v8": "^2.1.0",
+		"eslint": "^9.21.0",
+		"prettier": "^3.7.2",
+		"typescript": "^5.7.2",
+		"typescript-eslint": "^8.24.1",
+		"vitest": "^2.1.0"
+	}
+}

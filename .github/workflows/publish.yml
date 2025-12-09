@@ -1,0 +1,77 @@
+name: Publish to npm
+
+on:
+    release:
+        types: [published]
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Version to publish (e.g., 1.0.0)'
+                required: true
+                type: string
+
+jobs:
+    publish:
+        name: Publish Package
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+            id-token: write
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20.x'
+                  registry-url: 'https://registry.npmjs.org'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run tests
+              run: npm test
+
+            - name: Build
+              run: npm run build
+
+            - name: Verify package
+              run: npm pack --dry-run
+
+            - name: Extract version from release
+              if: github.event_name == 'release'
+              id: version
+              run: |
+                  VERSION=${GITHUB_REF#refs/tags/v}
+                  VERSION=${VERSION#refs/tags/}
+                  echo "version=$VERSION" >> $GITHUB_OUTPUT
+                  echo "Publishing version: $VERSION"
+
+            - name: Verify version matches package.json
+              if: github.event_name == 'release'
+              run: |
+                  PACKAGE_VERSION=$(node -p "require('./package.json').version")
+                  RELEASE_VERSION="${{ steps.version.outputs.version }}"
+                  if [ "$PACKAGE_VERSION" != "$RELEASE_VERSION" ]; then
+                    echo "Error: package.json version ($PACKAGE_VERSION) doesn't match release tag ($RELEASE_VERSION)"
+                    exit 1
+                  fi
+                  echo "Version verified: $PACKAGE_VERSION"
+
+            - name: Update package.json version (manual)
+              if: github.event_name == 'workflow_dispatch'
+              run: |
+                  npm version "${{ github.event.inputs.version }}" --no-git-tag-version
+                  echo "Updated package.json to version ${{ github.event.inputs.version }}"
+
+            - name: Publish to npm
+              uses: JS-DevTools/npm-publish@v3
+              with:
+                  token: ${{ secrets.NPM_TOKEN }}
+                  registry: https://registry.npmjs.org
+                  access: public
