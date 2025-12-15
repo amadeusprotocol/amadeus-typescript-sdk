@@ -120,6 +120,128 @@ export enum TransactionValidationError {
 }
 
 /**
+ * Transaction execution error codes.
+ * These are returned when contract execution fails.
+ */
+export enum TransactionExecutionError {
+	/** Success - execution completed successfully */
+	OK = 'ok',
+	/** Unknown error (when panic payload cannot be converted to string) */
+	UNKNOWN = 'unknown',
+	/** Contract execution was aborted */
+	AS_ABORT = 'as_abort',
+
+	// Execution budget errors
+	EXEC_INVALID_AMOUNT_NEGATIVE = 'exec_invalid_amount_negative',
+	EXEC_INSUFFICIENT_EXEC_BUDGET = 'exec_insufficient_exec_budget',
+	EXEC_CRITICAL_UNDERFLOW = 'exec_critical_underflow',
+
+	// Storage budget errors
+	EXEC_STORAGE_INVALID_AMOUNT_NEGATIVE = 'exec_storage_invalid_amount_negative',
+	EXEC_INSUFFICIENT_STORAGE_BUDGET = 'exec_insufficient_storage_budget',
+	EXEC_STORAGE_CRITICAL_UNDERFLOW = 'exec_storage_critical_underflow',
+
+	// KV operation errors
+	EXEC_TOO_LARGE_KEY_SIZE = 'exec_too_large_key_size',
+	EXEC_TOO_LARGE_VALUE_SIZE = 'exec_too_large_value_size',
+	EXEC_KV_PUT_FAILED = 'exec_kv_put_failed',
+	EXEC_KV_INCREMENT_FAILED = 'exec_kv_increment_failed',
+	EXEC_KV_INCREMENT_INVALID_INTEGER = 'exec_kv_increment_invalid_integer',
+	EXEC_KV_INCREMENT_INTEGER_OVERFLOW = 'exec_kv_increment_integer_overflow',
+	KV_PUT_FAILED = 'kv_put_failed',
+	EXEC_KV_DELETE_FAILED = 'exec_kv_delete_failed',
+	EXEC_KV_SET_BIT_FAILED = 'exec_kv_set_bit_failed',
+	EXEC_CANNOT_WRITE_DURING_VIEW = 'exec_cannot_write_during_view',
+
+	// WASM execution errors
+	EXEC_RETURN_VALUE_TOO_LARGE = 'exec_return_value_too_large',
+	EXEC_INSTANCE_NOT_INJECTED = 'exec_instance_not_injected',
+	EXEC_PTR_TERM_TOO_SHORT = 'exec_ptr_term_too_short',
+	EXEC_PTR_TERM_TOO_LONG = 'exec_ptr_term_too_long',
+	EXEC_LOG_INVALID_PTR = 'exec_log_invalid_ptr',
+	EXEC_CALL_TABLE_INVALID_PTR = 'exec_call_table_invalid_ptr',
+	EXEC_CALL_TOO_MANY_ARGS = 'exec_call_too_many_args',
+	EXEC_READ_CALL_TABLE_ERROR = 'exec_read_call_table_error',
+	EXEC_CALL_PTR_TERM_TOO_LONG = 'exec_call_ptr_term_too_long',
+	EXEC_READ_CALL_TABLE_DATA_ERROR = 'exec_read_call_table_data_error',
+	EXEC_CALL_EXTRA_INVALID = 'exec_call_extra_invalid',
+	EXEC_CALL_EXTRA_TOO_MANY = 'exec_call_extra_too_many',
+	EXEC_READ_EXTRA_ROW = 'exec_read_extra_row',
+	EXEC_READ_EXTRA_DATA = 'exec_read_extra_data',
+	EXEC_CALL_MISSING_ARGS = 'exec_call_missing_args',
+	EXEC_MEMWRITE = 'exec_memwrite',
+	EXEC_LOG_MSG_SIZE_EXCEEDED = 'exec_log_msg_size_exceeded',
+	EXEC_LOGS_TOTAL_SIZE_EXCEEDED = 'exec_logs_total_size_exceeded',
+	EXEC_LOGS_TOTAL_ELEMENTS_EXCEEDED = 'exec_logs_total_elements_exceeded',
+	EXEC_INVALID_MODULE = 'exec_invalid_module',
+	EXEC_MEMORY_ALLOC = 'exec_memory_alloc',
+	EXEC_ARG_LEN_WRITE = 'exec_arg_len_write',
+	EXEC_ARG_WRITE = 'exec_arg_write',
+	EXEC_INSTANCE = 'exec_instance',
+	EXEC_INIT_MEMWRITE = 'exec_init_memwrite',
+	EXEC_DESERIALIZE_ERR = 'exec_deserialize_err',
+	EXEC_SERIALIZE_ERR = 'exec_serialize_err',
+	EXEC_FUNCTION_NOT_FOUND = 'exec_function_not_found',
+	EXEC_ERROR = 'exec_error',
+
+	// Contract/action errors
+	INVALID_EPOCH = 'invalid_epoch',
+	INVALID_BIC_ACTION = 'invalid_bic_action',
+	INVALID_FUNCTION = 'invalid_function',
+	ACCOUNT_HAS_NO_BYTECODE = 'account_has_no_bytecode',
+	INVALID_ATTACHED_AMOUNT = 'invalid_attached_amount',
+	ATTACHED_AMOUNT_INSUFFICIENT_FUNDS = 'attached_amount_insufficient_funds',
+	WASM_NOOP = 'wasm_noop',
+	INVALID_BYTECODE = 'invalid_bytecode',
+
+	// Coin contract errors
+	INVALID_ARGS = 'invalid_args',
+	INVALID_AMOUNT = 'invalid_amount',
+	INVALID_RECEIVER_PK = 'invalid_receiver_pk',
+	INSUFFICIENT_FUNDS = 'insufficient_funds',
+	PAUSED = 'paused',
+	SOULBOUND = 'soulbound',
+	INVALID_BALANCE = 'invalid_balance',
+	INVALID_TOTAL_SUPPLY = 'invalid_total_supply',
+	INVALID_SYMBOL = 'invalid_symbol',
+	SYMBOL_TOO_SHORT = 'symbol_too_short',
+	SYMBOL_TOO_LONG = 'symbol_too_long',
+	SYMBOL_RESERVED = 'symbol_reserved',
+	SYMBOL_EXISTS = 'symbol_exists',
+	INVALID_DECIMALS = 'invalid_decimals',
+	NO_PERMISSIONS = 'no_permissions',
+	SYMBOL_DOESNT_EXIST = 'symbol_doesnt_exist',
+	NOT_MINTABLE = 'not_mintable',
+	INVALID_DIRECTION = 'invalid_direction',
+	NOT_PAUSABLE = 'not_pausable',
+
+	// Lockup contract errors
+	INVALID_DURATION = 'invalid_duration',
+	INVALID_VAULT = 'invalid_vault',
+	INVALID_UNLOCK_HEIGHT = 'invalid_unlock_height',
+	INVALID_UNLOCK_AMOUNT = 'invalid_unlock_amount',
+	VAULT_IS_LOCKED = 'vault_is_locked',
+
+	// Lockup Prime contract errors
+	INVALID_TIER = 'invalid_tier',
+	INVALID_MULTIPLIER = 'invalid_multiplier',
+	INVALID_UNLOCK_EPOCH = 'invalid_unlock_epoch',
+	INVALID_NEXT_CHECKIN_EPOCH = 'invalid_next_checkin_epoch',
+
+	// NFT contract errors
+	INSUFFICIENT_TOKENS = 'insufficient_tokens',
+	INVALID_COLLECTION = 'invalid_collection',
+	COLLECTION_TOO_SHORT = 'collection_too_short',
+	COLLECTION_TOO_LONG = 'collection_too_long',
+	COLLECTION_RESERVED = 'collection_reserved',
+	COLLECTION_EXISTS = 'collection_exists',
+	COLLECTION_DOESNT_EXIST = 'collection_doesnt_exist',
+
+	// Integer parsing errors
+	INVALID_INTEGER = 'invalid_integer'
+}
+
+/**
  * Transaction event type
  */
 export enum TransactionEventType {
@@ -233,7 +355,7 @@ export interface TransactionUnpacked {
 	signature: Uint8Array
 	metadata?: {
 		entry_hash: Uint8Array | string
-		entry_slot: number
+		entry_height: number
 		tx_event?: TransactionEventType
 	}
 }
@@ -274,8 +396,22 @@ export interface TransferTransactionInput {
  */
 export interface TransactionMetadata {
 	entry_hash: string
-	entry_slot: number
+	entry_height: number
 	tx_event?: TransactionEventType
+}
+
+/**
+ * Transaction receipt structure
+ */
+export interface TransactionReceipt {
+	/** Execution result  */
+	result: TransactionExecutionError | string
+	/** Execution logs (array of ASCII dump strings) */
+	logs: string[]
+	/** Success flag */
+	success: boolean
+	/** Execution cost used */
+	exec_used: string
 }
 
 /**
@@ -305,7 +441,9 @@ export interface Transaction {
 	/** Transaction metadata */
 	metadata: TransactionMetadata
 	/** Transaction result */
-	result: TransactionResult
+	result: TransactionResult // @deprecated: use receipt instead
+	/** Transaction receipt (execution result and logs) */
+	receipt: TransactionReceipt
 }
 
 /**
@@ -693,10 +831,8 @@ export interface SubmitTransactionResponse {
 export interface SubmitAndWaitTransactionResponse {
 	error: TransactionValidationError | string
 	hash?: string
-	entry_hash?: string
-	result?: {
-		error: TransactionValidationError | string
-	}
+	metadata?: TransactionMetadata
+	receipt?: TransactionReceipt
 }
 
 // ----------------------------------------------------------------------------
