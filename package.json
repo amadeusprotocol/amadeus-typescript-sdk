@@ -1,6 +1,6 @@
 {
 	"name": "@amadeus-protocol/sdk",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Official TypeScript/JavaScript SDK for Amadeus Protocol - Core utilities for serialization, cryptography, transaction building, and API client",
 	"repository": {
 		"type": "git",
