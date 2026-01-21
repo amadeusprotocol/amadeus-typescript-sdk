@@ -7,13 +7,22 @@ describe('Conversion Utilities', () => {
 		it('converts AMA to atomic units', () => {
 			expect(toAtomicAma(1)).toBe(AMA_TOKEN_DECIMALS_MULTIPLIER)
 			expect(toAtomicAma(0)).toBe(0)
-			expect(toAtomicAma(1.5)).toBe(AMA_TOKEN_DECIMALS_MULTIPLIER * 1.5)
+			expect(toAtomicAma(1.5)).toBe(1_500_000_000)
 			expect(toAtomicAma(100)).toBe(AMA_TOKEN_DECIMALS_MULTIPLIER * 100)
 		})
 
 		it('handles decimal amounts', () => {
 			expect(toAtomicAma(0.000000001)).toBe(1)
-			expect(toAtomicAma(0.1)).toBe(AMA_TOKEN_DECIMALS_MULTIPLIER * 0.1)
+			expect(toAtomicAma(0.1)).toBe(100_000_000)
+		})
+
+		it('truncates to avoid floating-point precision issues', () => {
+			// These values can cause floating-point issues without Math.trunc
+			expect(toAtomicAma(0.000000001)).toBe(1)
+			expect(toAtomicAma(1.123456789)).toBe(1_123_456_789)
+			// Values with more than 9 decimals get truncated
+			expect(toAtomicAma(0.0000000011)).toBe(1)
+			expect(toAtomicAma(0.0000000019)).toBe(1)
 		})
 	})
 

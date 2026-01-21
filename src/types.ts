@@ -440,8 +440,8 @@ export interface Transaction {
 	}
 	/** Transaction metadata */
 	metadata: TransactionMetadata
-	/** Transaction result */
-	result: TransactionResult // @deprecated: use receipt instead
+	/** Transaction result @deprecated use receipt instead */
+	result: TransactionResult
 	/** Transaction receipt (execution result and logs) */
 	receipt: TransactionReceipt
 }

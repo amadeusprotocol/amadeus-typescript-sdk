@@ -30,6 +30,11 @@ export const AMA_TOKEN_DECIMALS = 9
 export const AMA_TOKEN_DECIMALS_MULTIPLIER = 10 ** AMA_TOKEN_DECIMALS
 
 /**
+ * Minimum transferable amount in AMA (1 atomic unit)
+ */
+export const MIN_TRANSFERABLE_AMOUNT = 1 / AMA_TOKEN_DECIMALS_MULTIPLIER
+
+/**
  * Flat network transfer fee in AMA for standard transfers
  */
 export const AMA_TRANSFER_FEE = 0.02
@@ -48,3 +53,4 @@ export const NODE_API_URL = 'https://nodes.amadeus.bot/api'
  * Default request timeout in milliseconds
  */
 export const DEFAULT_TIMEOUT = 30000
+

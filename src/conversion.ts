@@ -40,8 +40,10 @@ export function fromAtomicAma(atomicAma: number | string): number {
 /**
  * Convert human-readable AMA amount to atomic units
  *
+ * Uses Math.trunc to avoid floating-point precision issues.
+ *
  * @param ama - Human-readable AMA amount
- * @returns Atomic units
+ * @returns Atomic units (integer)
  *
  * @example
  * ```ts
@@ -49,5 +51,5 @@ export function fromAtomicAma(atomicAma: number | string): number {
  * ```
  */
 export function toAtomicAma(ama: number): number {
-	return ama * AMA_TOKEN_DECIMALS_MULTIPLIER
+	return Math.trunc(ama * AMA_TOKEN_DECIMALS_MULTIPLIER)
 }
