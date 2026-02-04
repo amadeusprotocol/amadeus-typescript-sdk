@@ -47,7 +47,7 @@ export const EXPLORER_URL = 'https://explorer.ama.one'
 /**
  * Default node API URL
  */
-export const NODE_API_URL = 'https://nodes.amadeus.bot/api'
+export const NODE_API_URL = 'https://mainnet-rpc.ama.one/api'
 
 /**
  * Default request timeout in milliseconds

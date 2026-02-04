@@ -30,7 +30,7 @@ import { SDK_VERSION, NODE_API_URL } from './constants'
  *
  * // Initialize SDK with default node URL
  * const sdk = new AmadeusSDK({
- *   baseUrl: 'https://nodes.amadeus.bot/api'
+ *   baseUrl: 'https://mainnet-rpc.ama.one/api'
  * })
  *
  * // Query chain

@@ -22,7 +22,7 @@ async function basicExamples() {
 	// ============================================================================
 	console.log('1. Initializing SDK...')
 	const sdk = new AmadeusSDK({
-		baseUrl: 'https://nodes.amadeus.bot/api'
+		baseUrl: 'https://mainnet-rpc.ama.one/api'
 	})
 	console.log('SDK Version:', AmadeusSDK.getVersion())
 	console.log('SDK initialized!\n')

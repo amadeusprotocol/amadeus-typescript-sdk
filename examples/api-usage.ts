@@ -10,7 +10,7 @@ async function apiUsageExamples() {
 	console.log('=== API Usage Examples ===\n')
 
 	const sdk = new AmadeusSDK({
-		baseUrl: 'https://nodes.amadeus.bot/api'
+		baseUrl: 'https://mainnet-rpc.ama.one/api'
 	})
 
 	// ============================================================================

@@ -12,7 +12,7 @@ async function transactionFlowExample() {
 	// Step 1: Initialize SDK
 	console.log('Step 1: Initializing SDK...')
 	const sdk = new AmadeusSDK({
-		baseUrl: 'https://nodes.amadeus.bot/api'
+		baseUrl: 'https://mainnet-rpc.ama.one/api'
 	})
 	console.log('✓ SDK initialized\n')
 

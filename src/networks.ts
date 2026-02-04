@@ -25,7 +25,7 @@ export interface NetworkConfig {
  * Network API URLs
  */
 export const NETWORK_URLS: { [key in Exclude<NetworkType, NetworkType.CUSTOM>]: string } = {
-	[NetworkType.MAINNET]: 'https://nodes.amadeus.bot',
+	[NetworkType.MAINNET]: 'https://mainnet-rpc.ama.one',
 	[NetworkType.TESTNET]: 'https://testnet-rpc.ama.one'
 }
 
