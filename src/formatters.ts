@@ -10,7 +10,7 @@ import { AMA_TOKEN_DECIMALS } from './constants'
  * Format a number with locale-aware commas and specified decimal places
  *
  * @param num - The number to format
- * @param digits - Maximum fraction digits (default: 8)
+ * @param digits - Maximum fraction digits (default: AMA_TOKEN_DECIMALS)
  * @returns Formatted number string
  *
  * @example
@@ -19,7 +19,7 @@ import { AMA_TOKEN_DECIMALS } from './constants'
  * formatNumber(1.123456789, 4) // "1.1235"
  * ```
  */
-export function formatNumber(num: number, digits = 8): string {
+export function formatNumber(num: number, digits = AMA_TOKEN_DECIMALS): string {
 	return num.toLocaleString(undefined, { maximumFractionDigits: digits })
 }
 
