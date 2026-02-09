@@ -5,7 +5,7 @@
  * and human-readable token amounts for the AMA token.
  */
 
-import { AMA_TOKEN_DECIMALS_MULTIPLIER } from './constants'
+import { AMA_TOKEN_DECIMALS, AMA_TOKEN_DECIMALS_MULTIPLIER } from './constants'
 
 /**
  * Convert atomic AMA units to human-readable AMA amount
@@ -40,16 +40,20 @@ export function fromAtomicAma(atomicAma: number | string): number {
 /**
  * Convert human-readable AMA amount to atomic units
  *
- * Uses Math.trunc to avoid floating-point precision issues.
+ * Uses string splitting to avoid floating-point precision issues
+ * while preserving truncation (never rounds up) for safety.
  *
- * @param ama - Human-readable AMA amount
+ * @param ama - Human-readable AMA amount (number or string)
  * @returns Atomic units (integer)
  *
  * @example
  * ```ts
- * const atomic = toAtomicAma(1.5)  // Returns 1500000000
+ * const atomic = toAtomicAma(1.5)            // Returns 1500000000
+ * const atomic = toAtomicAma('1.00000001')   // Returns 1000000010
  * ```
  */
-export function toAtomicAma(ama: number): number {
-	return Math.trunc(ama * AMA_TOKEN_DECIMALS_MULTIPLIER)
+export function toAtomicAma(ama: number | string): number {
+	const num = typeof ama === 'string' ? parseFloat(ama) : ama
+	const [int, frac = ''] = num.toFixed(AMA_TOKEN_DECIMALS).split('.')
+	return parseInt(int + frac, 10)
 }
