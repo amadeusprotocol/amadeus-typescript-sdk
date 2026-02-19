@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { encode, decode } from '../serialization'
+import { encode, decode, decodeContractState } from '../serialization'
 import type { SerializableValue, DecodedValue } from '../types'
 
 describe('Serialization (VecPack)', () => {
@@ -174,6 +174,126 @@ describe('Serialization (VecPack)', () => {
 			const decoded = decode(encoded)
 
 			expect(decoded).toBeInstanceOf(Map)
+		})
+	})
+
+	describe('Large Integers (varint)', () => {
+		it('encodes and decodes bigints larger than MAX_SAFE_INTEGER', () => {
+			// Transaction nonces use Date.now() * 1_000_000n which exceeds MAX_SAFE_INTEGER
+			const nonce = BigInt(Date.now()) * 1_000_000n
+			expect(nonce).toBeGreaterThan(BigInt(Number.MAX_SAFE_INTEGER))
+
+			const encoded = encode(nonce)
+			const decoded = decode(encoded)
+			expect(decoded).toBe(nonce)
+		})
+
+		it('round-trips a full transaction structure with large nonce', () => {
+			const nonce = BigInt(Date.now()) * 1_000_000n
+			const tx: SerializableValue = {
+				signer: new Uint8Array(48),
+				nonce,
+				action: {
+					op: 'call',
+					contract: 'Coin',
+					function: 'transfer',
+					args: ['recipient', '1000000000', 'AMA']
+				}
+			}
+
+			const packed: SerializableValue = {
+				tx,
+				hash: new Uint8Array(32),
+				signature: new Uint8Array(96)
+			}
+
+			const encoded = encode(packed)
+			const decoded = decode(encoded) as Map<DecodedValue, DecodedValue>
+
+			expect(decoded).toBeInstanceOf(Map)
+
+			// Extract nonce from decoded structure
+			const txKey = new TextEncoder().encode('tx')
+			let txMap: Map<DecodedValue, DecodedValue> | undefined
+			for (const [k, v] of decoded.entries()) {
+				if (k instanceof Uint8Array && k.length === txKey.length && k.every((b, i) => b === txKey[i])) {
+					txMap = v as Map<DecodedValue, DecodedValue>
+					break
+				}
+			}
+			expect(txMap).toBeDefined()
+
+			const nonceKey = new TextEncoder().encode('nonce')
+			let decodedNonce: bigint | undefined
+			for (const [k, v] of txMap!.entries()) {
+				if (k instanceof Uint8Array && k.length === nonceKey.length && k.every((b, i) => b === nonceKey[i])) {
+					decodedNonce = v as bigint
+					break
+				}
+			}
+			expect(decodedNonce).toBe(nonce)
+		})
+
+		it('encodes and decodes negative large bigints', () => {
+			const large = -(BigInt(Number.MAX_SAFE_INTEGER) + 1000n)
+			const encoded = encode(large)
+			const decoded = decode(encoded)
+			expect(decoded).toBe(large)
+		})
+	})
+
+	describe('decodeContractState', () => {
+		it('decodes a map of binary key-value pairs', () => {
+			const map = new Map<SerializableValue, SerializableValue>([
+				[new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])],
+				[new Uint8Array([7, 8]), new Uint8Array([9, 10, 11, 12])]
+			])
+			const encoded = encode(map)
+			const pairs = decodeContractState(encoded)
+
+			expect(pairs).toHaveLength(2)
+			for (const [key, value] of pairs) {
+				expect(key).toBeInstanceOf(Uint8Array)
+				expect(value).toBeInstanceOf(Uint8Array)
+			}
+		})
+
+		it('accepts ArrayBuffer input', () => {
+			const map = new Map<SerializableValue, SerializableValue>([
+				[new Uint8Array([1]), new Uint8Array([2])]
+			])
+			const encoded = encode(map)
+			const arrayBuffer = encoded.buffer.slice(
+				encoded.byteOffset,
+				encoded.byteOffset + encoded.byteLength
+			)
+
+			const pairs = decodeContractState(arrayBuffer)
+			expect(pairs).toHaveLength(1)
+			expect(pairs[0][0]).toEqual(new Uint8Array([1]))
+			expect(pairs[0][1]).toEqual(new Uint8Array([2]))
+		})
+
+		it('returns empty array for empty map', () => {
+			const emptyMap = new Map<SerializableValue, SerializableValue>()
+			const encoded = encode(emptyMap)
+			const pairs = decodeContractState(encoded)
+
+			expect(pairs).toHaveLength(0)
+		})
+
+		it('throws for non-map data', () => {
+			const encoded = encode([1, 2, 3])
+			expect(() => decodeContractState(encoded)).toThrow('Expected MAP type')
+		})
+
+		it('throws for non-binary map values', () => {
+			// Integer values decode to bigint, not Uint8Array
+			const map = new Map<SerializableValue, SerializableValue>([
+				[new Uint8Array([1]), 42]
+			])
+			const encoded = encode(map)
+			expect(() => decodeContractState(encoded)).toThrow('Expected Uint8Array')
 		})
 	})
 

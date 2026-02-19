@@ -67,6 +67,48 @@ export function decode(bytes: Uint8Array | number[]): DecodedValue {
 	return value
 }
 
+/**
+ * Decode VecPack-encoded contract state into key-value pairs
+ *
+ * Contract state prefix queries return a VecPack-encoded map where both
+ * keys and values are binary (Uint8Array). This convenience function decodes
+ * the binary data and returns the entries as an array of tuples.
+ *
+ * @param bytes - VecPack-encoded bytes (Uint8Array or ArrayBuffer)
+ * @returns Array of [key, value] tuples
+ * @throws Error if the data is not a valid VecPack map or entries are not binary
+ *
+ * @example
+ * ```ts
+ * const response = await fetch('/contract/state/prefix?prefix=...')
+ * const buffer = await response.arrayBuffer()
+ * const entries = decodeContractState(buffer)
+ * for (const [key, value] of entries) {
+ *   console.log(key, value)
+ * }
+ * ```
+ */
+export function decodeContractState(
+	bytes: Uint8Array | ArrayBuffer
+): Array<[Uint8Array, Uint8Array]> {
+	const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
+	const decoded = decode(data)
+
+	if (!(decoded instanceof Map)) {
+		throw new Error(`Expected MAP type, got ${typeof decoded}`)
+	}
+
+	const result: Array<[Uint8Array, Uint8Array]> = []
+	for (const [key, value] of decoded.entries()) {
+		if (!(key instanceof Uint8Array) || !(value instanceof Uint8Array)) {
+			throw new Error('Expected Uint8Array for key and value')
+		}
+		result.push([key, value])
+	}
+
+	return result
+}
+
 /*
  * Helper functions for encoding and decoding
  */
@@ -137,8 +179,6 @@ function decodeVarint(data: Uint8Array, ref: DecodeRef): bigint {
 		mag = (mag << 8n) | BigInt(data[ref.offset++])
 	}
 
-	if (mag > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('length_overflow')
-
 	if (signBit === 1) {
 		return -mag
 	} else {
@@ -150,6 +190,9 @@ function decodeVarintGteZero(data: Uint8Array, ref: DecodeRef): number {
 	const n = decodeVarint(data, ref)
 	if (n < 0n) {
 		throw new Error('length_is_negative')
+	}
+	if (n > BigInt(Number.MAX_SAFE_INTEGER)) {
+		throw new Error('length_overflow')
 	}
 	return Number(n)
 }

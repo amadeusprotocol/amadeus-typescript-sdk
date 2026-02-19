@@ -63,7 +63,7 @@ export function reduce512To256LE(bytes64: Uint8Array): Uint8Array {
  */
 export function seed64ToKeypair(seed64: Uint8Array): [Uint8Array, Uint8Array] {
 	const sk = reduce512To256LE(seed64)
-	const pk = bls.longSignatures.getPublicKey(sk).toBytes()
+	const pk = bls.getPublicKey(sk)
 	return [pk, sk]
 }
 

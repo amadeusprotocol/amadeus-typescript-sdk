@@ -50,7 +50,7 @@ export class AmadeusClient {
 			timeout: config.timeout && config.timeout > 0 ? config.timeout : DEFAULT_TIMEOUT,
 			headers: {
 				'Content-Type': 'application/octet-stream',
-				'User-Agent': `@amadeus-protocol/sdk/${SDK_VERSION}`,
+				'X-Client-Type': `@amadeus-protocol/sdk/${SDK_VERSION}`,
 				...config.headers
 			}
 		}

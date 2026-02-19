@@ -41,7 +41,7 @@ import { AmadeusSDK } from '@amadeus-protocol/sdk'
 
 // Initialize SDK (uses default node URL if not specified)
 const sdk = new AmadeusSDK({
-	baseUrl: 'https://nodes.amadeus.bot/api'
+	baseUrl: 'https://mainnet-rpc.ama.one/api'
 })
 
 // Query chain
@@ -64,7 +64,7 @@ const result = await sdk.transaction.submit(txPacked)
 import { AmadeusSDK } from '@amadeus-protocol/sdk'
 
 const sdk = new AmadeusSDK({
-	baseUrl: 'https://nodes.amadeus.bot/api',
+	baseUrl: 'https://mainnet-rpc.ama.one/api',
 	timeout: 30000 // Optional: custom timeout
 })
 

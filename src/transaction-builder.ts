@@ -1,25 +1,58 @@
 /**
  * Transaction Builder
  *
- * This module provides a class-based API for building and signing Amadeus protocol transactions.
+ * Class-based API for building and signing Amadeus protocol transactions.
+ * Delegates to the signing primitives in `signing.ts` and the ABI-driven
+ * contract factory in `contracts/contract.ts`.
+ *
+ * ## Recommended: ABI-driven API
+ *
+ * ```ts
+ * import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+ *
+ * // Via builder.contract(abi) — typed methods, auto-signed:
+ * const builder = new TransactionBuilder('5Kd3N...')
+ * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
+ *   amount: toAtomicAma(100).toString(),
+ *   tier: '30d'
+ * })
+ *
+ * // Or standalone:
+ * import { createContract } from '@amadeus-protocol/sdk'
+ * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
+ * const call = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+ * const result = TransactionBuilder.signCall('5Kd3N...', call)
+ * ```
  */
 
-import type { PrivKey } from '@noble/curves/utils'
-import { bls12_381 as bls } from '@noble/curves/bls12-381'
-import { sha256 } from '@noble/hashes/sha2'
+import type { PrivKey } from '@noble/curves/abstract/utils'
 
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
-import { fromBase58, toBase58 } from './encoding'
 import { toAtomicAma } from './conversion'
-import { encode } from './serialization'
+import {
+	buildUnsigned,
+	buildUnsignedFromCall,
+	buildAndSignRaw,
+	signUnsigned,
+	signContractCall,
+	normalizeSignerSk
+} from './signing'
 import type {
 	BuildTransactionResult,
+	LockupPrimeDailyCheckinInput,
+	LockupPrimeLockInput,
+	LockupPrimeUnlockInput,
+	LockupUnlockInput,
 	SerializableValue,
-	TransactionAction,
 	TransferTransactionInput,
-	UnsignedTransaction,
 	UnsignedTransactionWithHash
 } from './types'
+import type { AbiDefinition } from './contracts/abi-types'
+import type { ContractCall } from './contracts/contract-call'
+import { createContract, type SignedContract } from './contracts/contract'
+import { buildCoinTransfer } from './contracts/coin'
+import { LOCKUP_PRIME_ABI } from './contracts/lockup-prime/abi'
+import { LOCKUP_ABI } from './contracts/lockup/abi'
 
 /**
  * Transaction Builder for Amadeus Protocol
@@ -29,32 +62,24 @@ import type {
  *
  * @example
  * ```ts
- * // Instance-based usage
+ * // ABI-driven (recommended)
  * const builder = new TransactionBuilder('5Kd3N...')
- * const { txHash, txPacked } = builder.transfer({
- *   recipient: '5Kd3N...',
- *   amount: 10.5,
- *   symbol: 'AMA'
+ * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
+ *   amount: toAtomicAma(100).toString(),
+ *   tier: '30d'
  * })
  *
- * // Static usage
- * const { txHash, txPacked } = TransactionBuilder.buildTransfer({
- *   senderPrivkey: '5Kd3N...',
- *   recipient: '5Kd3N...',
- *   amount: 10.5,
- *   symbol: 'AMA'
- * })
+ * // Generic build/sign
+ * const builder = new TransactionBuilder('5Kd3N...')
+ * const { txHash, txPacked } = builder.buildAndSign('Coin', 'transfer', [
+ *   recipientBytes, '1000000000', 'AMA'
+ * ])
  * ```
  */
 export class TransactionBuilder {
 	private readonly privateKey: string | null
 	private signerPk: Uint8Array | null = null
 	private signerSk: PrivKey | null = null
-
-	/**
-	 * Domain Separation Tag for transaction signatures
-	 */
-	private static readonly TX_DST = 'AMADEUS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_TX_'
 
 	/**
 	 * Create a new TransactionBuilder instance
@@ -70,105 +95,6 @@ export class TransactionBuilder {
 	}
 
 	/**
-	 * Generate a transaction nonce based on current timestamp
-	 */
-	private static generateNonce(): bigint {
-		return BigInt(Date.now()) * 1_000_000n
-	}
-
-	/**
-	 * Create transaction structure
-	 */
-	private static createTransaction(
-		signer: Uint8Array,
-		contract: string,
-		method: string,
-		args: SerializableValue[]
-	): UnsignedTransaction {
-		const action: TransactionAction = {
-			op: 'call',
-			contract,
-			function: method,
-			args
-		}
-		return {
-			signer,
-			nonce: TransactionBuilder.generateNonce(),
-			action
-		}
-	}
-
-	/**
-	 * Build an unsigned transaction (returns transaction structure and hash)
-	 */
-	private static buildUnsignedTransaction(
-		signerPk: Uint8Array,
-		contract: string,
-		method: string,
-		args: SerializableValue[]
-	): UnsignedTransactionWithHash {
-		const tx = TransactionBuilder.createTransaction(signerPk, contract, method, args)
-		const txEncoded = encode(tx)
-		const hash = sha256(txEncoded)
-
-		return { tx, hash }
-	}
-
-	/**
-	 * Normalize signer secret key to PrivKey format (handles Base58 strings)
-	 */
-	private static normalizeSignerSk(signerSk: PrivKey | string | Uint8Array): PrivKey {
-		if (typeof signerSk === 'string') {
-			// Base58 string - derive PrivKey from it
-			const { sk } = deriveSkAndSeed64FromBase58Seed(signerSk)
-			return sk
-		}
-		// Already PrivKey (Uint8Array)
-		return signerSk
-	}
-
-	/**
-	 * Sign a transaction hash using BLS12-381 with transaction DST
-	 */
-	private static signHash(hash: Uint8Array, signerSk: PrivKey | string | Uint8Array): Uint8Array {
-		const normalizedSk = TransactionBuilder.normalizeSignerSk(signerSk)
-		return bls.sign(hash, normalizedSk, { DST: TransactionBuilder.TX_DST })
-	}
-
-	/**
-	 * Sign an unsigned transaction
-	 */
-	private static signTransaction(
-		unsignedTx: UnsignedTransactionWithHash,
-		signerSk: PrivKey | string | Uint8Array
-	): BuildTransactionResult {
-		const signature = TransactionBuilder.signHash(unsignedTx.hash, signerSk)
-		return {
-			txHash: toBase58(unsignedTx.hash),
-			txPacked: encode({ tx: unsignedTx.tx, hash: unsignedTx.hash, signature })
-		}
-	}
-
-	/**
-	 * Build and sign a transaction (convenience method)
-	 */
-	private static buildAndSignTransaction(
-		signerPk: Uint8Array,
-		signerSk: PrivKey | string | Uint8Array,
-		contract: string,
-		method: string,
-		args: SerializableValue[]
-	): BuildTransactionResult {
-		const unsignedTx = TransactionBuilder.buildUnsignedTransaction(
-			signerPk,
-			contract,
-			method,
-			args
-		)
-		return TransactionBuilder.signTransaction(unsignedTx, signerSk)
-	}
-
-	/**
 	 * Initialize signer keys from the private key
 	 */
 	private initializeKeys(): void {
@@ -181,25 +107,141 @@ export class TransactionBuilder {
 	}
 
 	/**
-	 * Build an unsigned transaction
+	 * Get the signer's secret key (normalizes to PrivKey format)
+	 */
+	private getSignerSk(signerSk?: PrivKey | string | Uint8Array): PrivKey {
+		if (signerSk) {
+			return normalizeSignerSk(signerSk)
+		}
+		if (this.signerSk) {
+			return this.signerSk
+		}
+		if (this.privateKey) {
+			return normalizeSignerSk(this.privateKey)
+		}
+		throw new Error('Secret key required for signing')
+	}
+
+	private requirePk(signerPk?: Uint8Array): Uint8Array {
+		const pk = signerPk || this.signerPk
+		if (!pk) {
+			throw new Error(
+				'Signer public key required. Provide key or initialize builder with private key.'
+			)
+		}
+		return pk
+	}
+
+	// ========================================================================
+	// ABI-driven contract API
+	// ========================================================================
+
+	/**
+	 * Get a typed, signer-bound contract interface from an ABI definition.
 	 *
-	 * @param contract - Contract name
-	 * @param method - Method name
-	 * @param args - Method arguments
-	 * @param signerPk - Optional signer's public key (required if instance has no private key)
-	 * @returns Unsigned transaction with hash
+	 * Each ABI function becomes a method that builds and signs in one step,
+	 * returning `BuildTransactionResult` directly.
+	 *
+	 * @param abi - An ABI definition object (declared `as const`)
+	 * @returns A `SignedContract<TAbi>` with typed methods for each ABI function
 	 *
 	 * @example
 	 * ```ts
 	 * const builder = new TransactionBuilder('5Kd3N...')
-	 * const unsignedTx = builder.build('Coin', 'transfer', [
-	 *   recipientBytes,
-	 *   '1000000000',
-	 *   'AMA'
-	 * ])
-	 * // Can inspect or modify before signing
-	 * const { txHash, txPacked } = builder.sign(unsignedTx)
+	 *
+	 * // LockupPrime — all methods auto-detected from ABI:
+	 * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
+	 *   amount: toAtomicAma(100).toString(),
+	 *   tier: '30d'
+	 * })
+	 *
+	 * builder.contract(LOCKUP_PRIME_ABI).unlock({ vaultIndex: '3' })
+	 * builder.contract(LOCKUP_PRIME_ABI).daily_checkin({ vaultIndex: '7' })
+	 *
+	 * // Lockup:
+	 * builder.contract(LOCKUP_ABI).unlock({ vaultIndex: '5' })
+	 *
+	 * // Any future contract — just pass its ABI:
+	 * builder.contract(SOME_NEW_ABI).someFunction({ param: 'value' })
 	 * ```
+	 */
+	contract<TAbi extends AbiDefinition>(abi: TAbi): SignedContract<TAbi> {
+		if (!this.privateKey) {
+			throw new Error(
+				'Private key required. Initialize builder with private key.'
+			)
+		}
+		return createContract(abi).connect(this.privateKey)
+	}
+
+	// ========================================================================
+	// ContractCall-based API
+	// ========================================================================
+
+	/**
+	 * Derive keys from a Base58 private key and sign a ContractCall.
+	 *
+	 * @param senderPrivkey - Base58 encoded private key (seed)
+	 * @param call - A ContractCall from createContract(), buildContractCall(), or buildCoinTransfer()
+	 * @returns Transaction hash and packed transaction
+	 *
+	 * @example
+	 * ```ts
+	 * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
+	 * const call = lockupPrime.lock({ amount: '100000000000', tier: '30d' })
+	 * const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', call)
+	 * ```
+	 */
+	static signCall(
+		senderPrivkey: string,
+		call: ContractCall
+	): BuildTransactionResult {
+		return signContractCall(senderPrivkey, call)
+	}
+
+	/**
+	 * Build an unsigned transaction from a ContractCall (static)
+	 */
+	static buildFromCall(
+		call: ContractCall,
+		signerPk: Uint8Array
+	): UnsignedTransactionWithHash {
+		return buildUnsignedFromCall(signerPk, call)
+	}
+
+	/**
+	 * Build and sign a transaction from a ContractCall (static)
+	 */
+	static buildAndSignCall(
+		signerPk: Uint8Array,
+		signerSk: PrivKey | string | Uint8Array,
+		call: ContractCall
+	): BuildTransactionResult {
+		return buildAndSignRaw(signerPk, signerSk, call.contract, call.method, call.args)
+	}
+
+	/**
+	 * Build an unsigned transaction from a ContractCall (instance)
+	 */
+	buildFromCall(call: ContractCall): UnsignedTransactionWithHash {
+		return buildUnsignedFromCall(this.requirePk(), call)
+	}
+
+	/**
+	 * Build and sign a transaction from a ContractCall (instance)
+	 */
+	buildAndSignCall(call: ContractCall): BuildTransactionResult {
+		const pk = this.requirePk()
+		const sk = this.getSignerSk()
+		return buildAndSignRaw(pk, sk, call.contract, call.method, call.args)
+	}
+
+	// ========================================================================
+	// Generic build/sign methods
+	// ========================================================================
+
+	/**
+	 * Build an unsigned transaction (instance)
 	 */
 	build(
 		contract: string,
@@ -207,87 +249,21 @@ export class TransactionBuilder {
 		args: SerializableValue[],
 		signerPk?: Uint8Array
 	): UnsignedTransactionWithHash {
-		const pk = signerPk || this.signerPk
-		if (!pk) {
-			throw new Error(
-				'Signer public key required. Provide key or initialize builder with private key.'
-			)
-		}
-
-		return TransactionBuilder.buildUnsignedTransaction(pk, contract, method, args)
+		return buildUnsigned(this.requirePk(signerPk), contract, method, args)
 	}
 
 	/**
-	 * Get the signer's secret key (normalizes to PrivKey format)
-	 * Handles Base58 strings, PrivKey (Uint8Array), or uses cached/derived key
-	 */
-	private getSignerSk(signerSk?: PrivKey | string | Uint8Array): PrivKey {
-		// If provided, normalize it (convert Base58 string to PrivKey if needed)
-		if (signerSk) {
-			if (typeof signerSk === 'string') {
-				// Base58 string - derive PrivKey from it
-				const { sk } = deriveSkAndSeed64FromBase58Seed(signerSk)
-				return sk
-			}
-			// Already PrivKey (Uint8Array)
-			return signerSk
-		}
-
-		// Use cached signerSk if available
-		if (this.signerSk) {
-			return this.signerSk
-		}
-
-		// Derive from privateKey
-		if (this.privateKey) {
-			const { sk } = deriveSkAndSeed64FromBase58Seed(this.privateKey)
-			return sk
-		}
-
-		throw new Error('Secret key required for signing')
-	}
-
-	/**
-	 * Sign an unsigned transaction
-	 *
-	 * @param unsignedTx - Unsigned transaction with hash
-	 * @param signerSk - Optional signer's secret key (required if instance has no private key)
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const builder = new TransactionBuilder('5Kd3N...')
-	 * const unsignedTx = builder.build('Coin', 'transfer', args)
-	 * const { txHash, txPacked } = builder.sign(unsignedTx)
-	 * ```
+	 * Sign an unsigned transaction (instance)
 	 */
 	sign(
 		unsignedTx: UnsignedTransactionWithHash,
 		signerSk?: PrivKey | string | Uint8Array
 	): BuildTransactionResult {
-		const sk = this.getSignerSk(signerSk)
-		return TransactionBuilder.signTransaction(unsignedTx, sk)
+		return signUnsigned(unsignedTx, this.getSignerSk(signerSk))
 	}
 
 	/**
-	 * Build and sign a generic transaction (convenience method)
-	 *
-	 * @param contract - Contract name
-	 * @param method - Method name
-	 * @param args - Method arguments
-	 * @param signerPk - Optional signer's public key (required if instance has no private key)
-	 * @param signerSk - Optional signer's secret key (required if instance has no private key)
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const builder = new TransactionBuilder('5Kd3N...')
-	 * const { txHash, txPacked } = builder.buildAndSign('Coin', 'transfer', [
-	 *   recipientBytes,
-	 *   '1000000000',
-	 *   'AMA'
-	 * ])
-	 * ```
+	 * Build and sign a generic transaction (instance)
 	 */
 	buildAndSign(
 		contract: string,
@@ -296,149 +272,13 @@ export class TransactionBuilder {
 		signerPk?: Uint8Array,
 		signerSk?: PrivKey | string | Uint8Array
 	): BuildTransactionResult {
-		const pk = signerPk || this.signerPk
-		if (!pk) {
-			throw new Error(
-				'Signer public key required. Provide key or initialize builder with private key.'
-			)
-		}
+		const pk = this.requirePk(signerPk)
 		const sk = this.getSignerSk(signerSk)
-		return TransactionBuilder.buildAndSignTransaction(pk, sk, contract, method, args)
+		return buildAndSignRaw(pk, sk, contract, method, args)
 	}
 
 	/**
-	 * Build an unsigned transfer transaction
-	 *
-	 * @param input - Transfer transaction parameters
-	 * @returns Unsigned transaction with hash
-	 *
-	 * @example
-	 * ```ts
-	 * const builder = new TransactionBuilder('5Kd3N...')
-	 * const unsignedTx = builder.buildTransfer({
-	 *   recipient: '5Kd3N...',
-	 *   amount: 10.5,
-	 *   symbol: 'AMA'
-	 * })
-	 * ```
-	 */
-	buildTransfer(
-		input: Omit<TransferTransactionInput, 'senderPrivkey'>
-	): UnsignedTransactionWithHash {
-		if (!this.signerPk) {
-			throw new Error(
-				'Public key required. Initialize builder with private key or provide signerPk.'
-			)
-		}
-
-		return this.build('Coin', 'transfer', [
-			fromBase58(input.recipient),
-			toAtomicAma(input.amount).toString(),
-			input.symbol
-		])
-	}
-
-	/**
-	 * Build and sign a transfer transaction (convenience method)
-	 *
-	 * @param input - Transfer transaction parameters
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const builder = new TransactionBuilder('5Kd3N...')
-	 * const { txHash, txPacked } = builder.transfer({
-	 *   recipient: '5Kd3N...',
-	 *   amount: 10.5,
-	 *   symbol: 'AMA'
-	 * })
-	 * ```
-	 */
-	transfer(input: Omit<TransferTransactionInput, 'senderPrivkey'>): BuildTransactionResult {
-		if (!this.privateKey) {
-			throw new Error(
-				'Private key required. Initialize builder with private key or use static method.'
-			)
-		}
-
-		return this.buildAndSign('Coin', 'transfer', [
-			fromBase58(input.recipient),
-			toAtomicAma(input.amount).toString(),
-			input.symbol
-		])
-	}
-
-	/**
-	 * Build an unsigned transfer transaction (static method)
-	 *
-	 * @param input - Transfer transaction parameters (without senderPrivkey)
-	 * @param signerPk - Signer's public key
-	 * @returns Unsigned transaction with hash
-	 *
-	 * @example
-	 * ```ts
-	 * const unsignedTx = TransactionBuilder.buildTransfer(
-	 *   { recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' },
-	 *   publicKey
-	 * )
-	 * ```
-	 */
-	static buildTransfer(
-		input: Omit<TransferTransactionInput, 'senderPrivkey'>,
-		signerPk: Uint8Array
-	): UnsignedTransactionWithHash {
-		return TransactionBuilder.buildUnsignedTransaction(signerPk, 'Coin', 'transfer', [
-			fromBase58(input.recipient),
-			toAtomicAma(input.amount).toString(),
-			input.symbol
-		])
-	}
-
-	/**
-	 * Build and sign a transfer transaction (static method)
-	 *
-	 * @param input - Transfer transaction parameters
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const { txHash, txPacked } = TransactionBuilder.buildSignedTransfer({
-	 *   senderPrivkey: '5Kd3N...',
-	 *   recipient: '5Kd3N...',
-	 *   amount: 10.5,
-	 *   symbol: 'AMA'
-	 * })
-	 * ```
-	 */
-	static buildSignedTransfer(input: TransferTransactionInput): BuildTransactionResult {
-		const { seed64, sk } = deriveSkAndSeed64FromBase58Seed(input.senderPrivkey)
-		const signerPubKey = getPublicKey(seed64)
-
-		return TransactionBuilder.buildAndSignTransaction(signerPubKey, sk, 'Coin', 'transfer', [
-			fromBase58(input.recipient),
-			toAtomicAma(input.amount).toString(),
-			input.symbol
-		])
-	}
-
-	/**
-	 * Build an unsigned transaction (static method)
-	 *
-	 * @param signerPk - Signer's public key
-	 * @param contract - Contract name
-	 * @param method - Method name
-	 * @param args - Method arguments
-	 * @returns Unsigned transaction with hash
-	 *
-	 * @example
-	 * ```ts
-	 * const unsignedTx = TransactionBuilder.build(
-	 *   publicKey,
-	 *   'Coin',
-	 *   'transfer',
-	 *   [recipientBytes, amount, 'AMA']
-	 * )
-	 * ```
+	 * Build an unsigned transaction (static)
 	 */
 	static build(
 		signerPk: Uint8Array,
@@ -446,49 +286,21 @@ export class TransactionBuilder {
 		method: string,
 		args: SerializableValue[]
 	): UnsignedTransactionWithHash {
-		return TransactionBuilder.buildUnsignedTransaction(signerPk, contract, method, args)
+		return buildUnsigned(signerPk, contract, method, args)
 	}
 
 	/**
-	 * Sign an unsigned transaction (static method)
-	 *
-	 * @param unsignedTx - Unsigned transaction with hash
-	 * @param signerSk - Signer's secret key
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const unsignedTx = TransactionBuilder.build(publicKey, 'Coin', 'transfer', args)
-	 * const { txHash, txPacked } = TransactionBuilder.sign(unsignedTx, secretKey)
-	 * ```
+	 * Sign an unsigned transaction (static)
 	 */
 	static sign(
 		unsignedTx: UnsignedTransactionWithHash,
 		signerSk: PrivKey | string | Uint8Array
 	): BuildTransactionResult {
-		return TransactionBuilder.signTransaction(unsignedTx, signerSk)
+		return signUnsigned(unsignedTx, signerSk)
 	}
 
 	/**
-	 * Build and sign a generic transaction (static method)
-	 *
-	 * @param signerPk - Signer's public key
-	 * @param signerSk - Signer's secret key
-	 * @param contract - Contract name
-	 * @param method - Method name
-	 * @param args - Method arguments
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const { txHash, txPacked } = TransactionBuilder.buildAndSign(
-	 *   publicKey,
-	 *   secretKey,
-	 *   'Coin',
-	 *   'transfer',
-	 *   [recipientBytes, amount, 'AMA']
-	 * )
-	 * ```
+	 * Build and sign a generic transaction (static)
 	 */
 	static buildAndSign(
 		signerPk: Uint8Array,
@@ -497,12 +309,155 @@ export class TransactionBuilder {
 		method: string,
 		args: SerializableValue[]
 	): BuildTransactionResult {
-		return TransactionBuilder.buildAndSignTransaction(
-			signerPk,
-			signerSk,
-			contract,
-			method,
-			args
+		return buildAndSignRaw(signerPk, signerSk, contract, method, args)
+	}
+
+	// ========================================================================
+	// Coin transfer (instance)
+	// ========================================================================
+
+	/**
+	 * Build an unsigned Coin transfer transaction
+	 */
+	buildTransfer(
+		input: Omit<TransferTransactionInput, 'senderPrivkey'>
+	): UnsignedTransactionWithHash {
+		return this.buildFromCall(buildCoinTransfer(input))
+	}
+
+	/**
+	 * Build and sign a Coin transfer transaction
+	 */
+	transfer(input: Omit<TransferTransactionInput, 'senderPrivkey'>): BuildTransactionResult {
+		if (!this.privateKey) {
+			throw new Error(
+				'Private key required. Initialize builder with private key or use static method.'
+			)
+		}
+		return this.buildAndSignCall(buildCoinTransfer(input))
+	}
+
+	// ========================================================================
+	// Coin transfer (static)
+	// ========================================================================
+
+	/**
+	 * Build an unsigned Coin transfer transaction (static)
+	 */
+	static buildTransfer(
+		input: Omit<TransferTransactionInput, 'senderPrivkey'>,
+		signerPk: Uint8Array
+	): UnsignedTransactionWithHash {
+		return TransactionBuilder.buildFromCall(buildCoinTransfer(input), signerPk)
+	}
+
+	/**
+	 * Build and sign a Coin transfer transaction (static)
+	 */
+	static buildSignedTransfer(input: TransferTransactionInput): BuildTransactionResult {
+		return TransactionBuilder.signCall(
+			input.senderPrivkey,
+			buildCoinTransfer({ recipient: input.recipient, amount: input.amount, symbol: input.symbol })
 		)
+	}
+
+	// ========================================================================
+	// LockupPrime (instance)
+	// ========================================================================
+
+	/**
+	 * Build and sign a LockupPrime lock transaction
+	 */
+	lockupPrimeLock(input: Omit<LockupPrimeLockInput, 'senderPrivkey'>): BuildTransactionResult {
+		return this.contract(LOCKUP_PRIME_ABI).lock({
+			amount: toAtomicAma(input.amount).toString(),
+			tier: input.tier
+		})
+	}
+
+	/**
+	 * Build and sign a LockupPrime unlock transaction
+	 */
+	lockupPrimeUnlock(
+		input: Omit<LockupPrimeUnlockInput, 'senderPrivkey'>
+	): BuildTransactionResult {
+		return this.contract(LOCKUP_PRIME_ABI).unlock({
+			vaultIndex: input.vaultIndex.toString()
+		})
+	}
+
+	/**
+	 * Build and sign a LockupPrime daily check-in transaction
+	 */
+	lockupPrimeDailyCheckin(
+		input: Omit<LockupPrimeDailyCheckinInput, 'senderPrivkey'>
+	): BuildTransactionResult {
+		return this.contract(LOCKUP_PRIME_ABI).daily_checkin({
+			vaultIndex: input.vaultIndex.toString()
+		})
+	}
+
+	// ========================================================================
+	// Lockup (instance)
+	// ========================================================================
+
+	/**
+	 * Build and sign a Lockup unlock transaction
+	 */
+	lockupUnlock(input: Omit<LockupUnlockInput, 'senderPrivkey'>): BuildTransactionResult {
+		return this.contract(LOCKUP_ABI).unlock({
+			vaultIndex: input.vaultIndex.toString()
+		})
+	}
+
+	// ========================================================================
+	// LockupPrime (static)
+	// ========================================================================
+
+	/**
+	 * Build and sign a LockupPrime lock transaction (static)
+	 */
+	static buildSignedLockupPrimeLock(input: LockupPrimeLockInput): BuildTransactionResult {
+		const call = createContract(LOCKUP_PRIME_ABI).lock({
+			amount: toAtomicAma(input.amount).toString(),
+			tier: input.tier
+		})
+		return TransactionBuilder.signCall(input.senderPrivkey, call)
+	}
+
+	/**
+	 * Build and sign a LockupPrime unlock transaction (static)
+	 */
+	static buildSignedLockupPrimeUnlock(input: LockupPrimeUnlockInput): BuildTransactionResult {
+		const call = createContract(LOCKUP_PRIME_ABI).unlock({
+			vaultIndex: input.vaultIndex.toString()
+		})
+		return TransactionBuilder.signCall(input.senderPrivkey, call)
+	}
+
+	/**
+	 * Build and sign a LockupPrime daily check-in transaction (static)
+	 */
+	static buildSignedLockupPrimeDailyCheckin(
+		input: LockupPrimeDailyCheckinInput
+	): BuildTransactionResult {
+		const call = createContract(LOCKUP_PRIME_ABI).daily_checkin({
+			vaultIndex: input.vaultIndex.toString()
+		})
+		return TransactionBuilder.signCall(input.senderPrivkey, call)
+	}
+
+	// ========================================================================
+	// Lockup (static)
+	// ========================================================================
+
+	/**
+	 * Build and sign a Lockup unlock transaction (static)
+	 */
+	static buildSignedLockupUnlock(input: LockupUnlockInput): BuildTransactionResult {
+		const call = createContract(LOCKUP_ABI).unlock({
+			vaultIndex: input.vaultIndex.toString()
+		})
+		return TransactionBuilder.signCall(input.senderPrivkey, call)
 	}
 }

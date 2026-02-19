@@ -391,6 +391,27 @@ export interface TransferTransactionInput {
 	symbol: string
 }
 
+export interface LockupPrimeLockInput {
+	senderPrivkey: string
+	amount: number | string
+	tier: string
+}
+
+export interface LockupPrimeUnlockInput {
+	senderPrivkey: string
+	vaultIndex: number
+}
+
+export interface LockupPrimeDailyCheckinInput {
+	senderPrivkey: string
+	vaultIndex: number
+}
+
+export interface LockupUnlockInput {
+	senderPrivkey: string
+	vaultIndex: number
+}
+
 /**
  * Transaction metadata
  */
