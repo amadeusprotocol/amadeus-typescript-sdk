@@ -216,7 +216,11 @@ describe('Serialization (VecPack)', () => {
 			const txKey = new TextEncoder().encode('tx')
 			let txMap: Map<DecodedValue, DecodedValue> | undefined
 			for (const [k, v] of decoded.entries()) {
-				if (k instanceof Uint8Array && k.length === txKey.length && k.every((b, i) => b === txKey[i])) {
+				if (
+					k instanceof Uint8Array &&
+					k.length === txKey.length &&
+					k.every((b, i) => b === txKey[i])
+				) {
 					txMap = v as Map<DecodedValue, DecodedValue>
 					break
 				}
@@ -226,7 +230,11 @@ describe('Serialization (VecPack)', () => {
 			const nonceKey = new TextEncoder().encode('nonce')
 			let decodedNonce: bigint | undefined
 			for (const [k, v] of txMap!.entries()) {
-				if (k instanceof Uint8Array && k.length === nonceKey.length && k.every((b, i) => b === nonceKey[i])) {
+				if (
+					k instanceof Uint8Array &&
+					k.length === nonceKey.length &&
+					k.every((b, i) => b === nonceKey[i])
+				) {
 					decodedNonce = v as bigint
 					break
 				}
@@ -289,9 +297,7 @@ describe('Serialization (VecPack)', () => {
 
 		it('throws for non-binary map values', () => {
 			// Integer values decode to bigint, not Uint8Array
-			const map = new Map<SerializableValue, SerializableValue>([
-				[new Uint8Array([1]), 42]
-			])
+			const map = new Map<SerializableValue, SerializableValue>([[new Uint8Array([1]), 42]])
 			const encoded = encode(map)
 			expect(() => decodeContractState(encoded)).toThrow('Expected Uint8Array')
 		})

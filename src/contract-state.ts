@@ -54,9 +54,7 @@ export function decodeContractStateToBase64(
  * parseStateNumber(null)                             // 0
  * ```
  */
-export function parseStateNumber(
-	value: string | number | Uint8Array | null | undefined
-): number {
+export function parseStateNumber(value: string | number | Uint8Array | null | undefined): number {
 	if (value === null || value === undefined) return 0
 	if (typeof value === 'number') return Number.isInteger(value) && value >= 0 ? value : 0
 	if (typeof value === 'string') {

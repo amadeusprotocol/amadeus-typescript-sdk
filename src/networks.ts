@@ -32,10 +32,11 @@ export const NETWORK_URLS: { [key in Exclude<NetworkType, NetworkType.CUSTOM>]: 
 /**
  * Network Explorer URLs
  */
-export const NETWORK_EXPLORER_URLS: { [key in Exclude<NetworkType, NetworkType.CUSTOM>]: string } = {
-	[NetworkType.MAINNET]: 'https://explorer.ama.one',
-	[NetworkType.TESTNET]: 'https://testnet.explorer.ama.one'
-}
+export const NETWORK_EXPLORER_URLS: { [key in Exclude<NetworkType, NetworkType.CUSTOM>]: string } =
+	{
+		[NetworkType.MAINNET]: 'https://explorer.ama.one',
+		[NetworkType.TESTNET]: 'https://testnet.explorer.ama.one'
+	}
 
 /**
  * Network configurations (RPC + Explorer)

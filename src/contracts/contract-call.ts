@@ -6,7 +6,12 @@
  */
 
 import type { SerializableValue } from '../types'
-import type { AbiDefinition, ExtractContractName, ExtractFunctionNames, FunctionParams } from './abi-types'
+import type {
+	AbiDefinition,
+	ExtractContractName,
+	ExtractFunctionNames,
+	FunctionParams
+} from './abi-types'
 
 /**
  * A fully-resolved contract call ready for TransactionBuilder.
@@ -61,9 +66,7 @@ export function buildContractCall<
 ): ContractCall<TAbi, TFn & string> {
 	const fn = abi.abi.find((f) => f.name === functionName)
 	if (!fn) {
-		throw new Error(
-			`Function "${String(functionName)}" not found in ${abi.contractName} ABI`
-		)
+		throw new Error(`Function "${String(functionName)}" not found in ${abi.contractName} ABI`)
 	}
 
 	const args: SerializableValue[] = []
@@ -79,7 +82,7 @@ export function buildContractCall<
 			if (!input.enum.includes(value)) {
 				throw new Error(
 					`Invalid value "${value}" for parameter "${input.name}". ` +
-					`Expected one of: ${input.enum.join(', ')}`
+						`Expected one of: ${input.enum.join(', ')}`
 				)
 			}
 		}

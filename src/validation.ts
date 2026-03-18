@@ -57,12 +57,14 @@ export function validate<T>(schema: Schema.Schema<T>, value: unknown): T {
 /**
  * Validation result type
  */
-export type ValidationResult = {
-	valid: true
-} | {
-	valid: false
-	error: string
-}
+export type ValidationResult =
+	| {
+			valid: true
+	  }
+	| {
+			valid: false
+			error: string
+	  }
 
 /**
  * Validate an Amadeus address (Base58-encoded 48-byte public key)
@@ -273,7 +275,10 @@ export function validateTokenSymbol(symbol: string): ValidationResult {
 
 	// Only allow alphanumeric characters
 	if (!/^[A-Z0-9]+$/.test(symbol)) {
-		return { valid: false, error: 'Token symbol must contain only uppercase letters and numbers' }
+		return {
+			valid: false,
+			error: 'Token symbol must contain only uppercase letters and numbers'
+		}
 	}
 
 	return { valid: true }

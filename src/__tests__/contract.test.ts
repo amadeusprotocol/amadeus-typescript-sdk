@@ -151,10 +151,7 @@ describe('createContract', () => {
 			expect(unsignedTx).toHaveProperty('hash')
 			expect(unsignedTx.tx.action.contract).toBe('LockupPrime')
 			expect(unsignedTx.tx.action.function).toBe('lock')
-			expect(unsignedTx.tx.action.args).toEqual([
-				toAtomicAma(50).toString(),
-				'7d'
-			])
+			expect(unsignedTx.tx.action.args).toEqual([toAtomicAma(50).toString(), '7d'])
 		})
 
 		it('buildAndSignCall builds and signs from ContractCall', () => {
@@ -339,9 +336,9 @@ describe('createContract', () => {
 			// Both produce valid output (nonces differ due to timestamp, but structure is same)
 			expect(viaSignCall.txHash).toBeTypeOf('string')
 			expect(viaSigned.txHash).toBeTypeOf('string')
-			expect(
-				Math.abs(viaSignCall.txPacked.length - viaSigned.txPacked.length)
-			).toBeLessThan(5)
+			expect(Math.abs(viaSignCall.txPacked.length - viaSigned.txPacked.length)).toBeLessThan(
+				5
+			)
 		})
 
 		it('builder.contract(ABI).lock() produces same size as builder.lockupPrimeLock()', () => {
@@ -355,9 +352,9 @@ describe('createContract', () => {
 
 			expect(viaContract.txHash).toBeTypeOf('string')
 			expect(viaBuiltIn.txHash).toBeTypeOf('string')
-			expect(
-				Math.abs(viaContract.txPacked.length - viaBuiltIn.txPacked.length)
-			).toBeLessThan(5)
+			expect(Math.abs(viaContract.txPacked.length - viaBuiltIn.txPacked.length)).toBeLessThan(
+				5
+			)
 		})
 	})
 
@@ -387,7 +384,9 @@ describe('createContract', () => {
 
 		it('throws on empty contractName', () => {
 			// @ts-expect-error — testing runtime validation
-			expect(() => createContract({ contractName: '', abi: [] })).toThrow(/missing or empty "contractName"/)
+			expect(() => createContract({ contractName: '', abi: [] })).toThrow(
+				/missing or empty "contractName"/
+			)
 		})
 
 		it('throws on missing abi array', () => {
@@ -397,44 +396,64 @@ describe('createContract', () => {
 
 		it('throws on non-array abi', () => {
 			// @ts-expect-error — testing runtime validation
-			expect(() => createContract({ contractName: 'Test', abi: 'bad' })).toThrow(/"abi" must be an array/)
+			expect(() => createContract({ contractName: 'Test', abi: 'bad' })).toThrow(
+				/"abi" must be an array/
+			)
 		})
 
 		it('throws on function entry with wrong type', () => {
-			expect(() => createContract({
-				contractName: 'Test',
-				abi: [
-					// @ts-expect-error — testing runtime validation
-					{ type: 'event', name: 'foo', inputs: [], outputs: [], stateMutability: 'view' }
-				]
-			})).toThrow(/has type "event", expected "function"/)
+			expect(() =>
+				createContract({
+					contractName: 'Test',
+					abi: [
+						// @ts-expect-error — testing runtime validation
+						{
+							type: 'event',
+							name: 'foo',
+							inputs: [],
+							outputs: [],
+							stateMutability: 'view'
+						}
+					]
+				})
+			).toThrow(/has type "event", expected "function"/)
 		})
 
 		it('throws on function entry missing name', () => {
-			expect(() => createContract({
-				contractName: 'Test',
-				abi: [
-					// @ts-expect-error — testing runtime validation
-					{ type: 'function', inputs: [], outputs: [], stateMutability: 'view' }
-				]
-			})).toThrow(/missing "name"/)
+			expect(() =>
+				createContract({
+					contractName: 'Test',
+					abi: [
+						// @ts-expect-error — testing runtime validation
+						{ type: 'function', inputs: [], outputs: [], stateMutability: 'view' }
+					]
+				})
+			).toThrow(/missing "name"/)
 		})
 
 		it('throws on function entry missing inputs', () => {
-			expect(() => createContract({
-				contractName: 'Test',
-				abi: [
-					// @ts-expect-error — testing runtime validation
-					{ type: 'function', name: 'foo', outputs: [], stateMutability: 'view' }
-				]
-			})).toThrow(/missing "inputs" array/)
+			expect(() =>
+				createContract({
+					contractName: 'Test',
+					abi: [
+						// @ts-expect-error — testing runtime validation
+						{ type: 'function', name: 'foo', outputs: [], stateMutability: 'view' }
+					]
+				})
+			).toThrow(/missing "inputs" array/)
 		})
 
 		it('accepts valid minimal ABI', () => {
 			const contract = createContract({
 				contractName: 'Minimal',
 				abi: [
-					{ type: 'function', name: 'ping', inputs: [], outputs: [], stateMutability: 'nonpayable' }
+					{
+						type: 'function',
+						name: 'ping',
+						inputs: [],
+						outputs: [],
+						stateMutability: 'nonpayable'
+					}
 				]
 			} as const)
 

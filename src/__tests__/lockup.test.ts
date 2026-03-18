@@ -45,9 +45,7 @@ describe('Lockup Contract', () => {
 		})
 
 		it('buildArgs throws for missing parameter', () => {
-			expect(() => Lockup.buildArgs('unlock', {})).toThrow(
-				'Missing parameter: vaultIndex'
-			)
+			expect(() => Lockup.buildArgs('unlock', {})).toThrow('Missing parameter: vaultIndex')
 		})
 
 		it('getContractName returns correct name', () => {

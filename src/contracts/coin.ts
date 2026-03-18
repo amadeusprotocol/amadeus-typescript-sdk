@@ -47,10 +47,6 @@ export function buildCoinTransfer(params: CoinTransferParams): ContractCall {
 	return {
 		contract: 'Coin',
 		method: 'transfer',
-		args: [
-			fromBase58(params.recipient),
-			toAtomicAma(params.amount).toString(),
-			params.symbol
-		]
+		args: [fromBase58(params.recipient), toAtomicAma(params.amount).toString(), params.symbol]
 	}
 }

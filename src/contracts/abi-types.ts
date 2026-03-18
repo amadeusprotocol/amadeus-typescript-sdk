@@ -70,18 +70,18 @@ export type ExtractFunctionNames<T extends AbiDefinition> = T['abi'][number]['na
 /**
  * Find a specific function entry in the ABI by name
  */
-type FindFunction<
-	TAbi extends AbiDefinition,
-	TFn extends string
-> = Extract<TAbi['abi'][number], { readonly name: TFn }>
+type FindFunction<TAbi extends AbiDefinition, TFn extends string> = Extract<
+	TAbi['abi'][number],
+	{ readonly name: TFn }
+>
 
 /**
  * Extract the inputs array for a specific function
  */
-type FunctionInputs<
-	TAbi extends AbiDefinition,
-	TFn extends string
-> = FindFunction<TAbi, TFn>['inputs']
+type FunctionInputs<TAbi extends AbiDefinition, TFn extends string> = FindFunction<
+	TAbi,
+	TFn
+>['inputs']
 
 /**
  * Map an inputs tuple to a params object `{ inputName: string }`
@@ -92,9 +92,6 @@ type FunctionInputs<
  * // => { amount: string; tier: string }
  * ```
  */
-export type FunctionParams<
-	TAbi extends AbiDefinition,
-	TFn extends string
-> = {
+export type FunctionParams<TAbi extends AbiDefinition, TFn extends string> = {
 	[K in FunctionInputs<TAbi, TFn>[number] as K['name']]: string
 }

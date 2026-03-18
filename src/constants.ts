@@ -53,4 +53,3 @@ export const NODE_API_URL = 'https://mainnet-rpc.ama.one/api'
  * Default request timeout in milliseconds
  */
 export const DEFAULT_TIMEOUT = 30000
-

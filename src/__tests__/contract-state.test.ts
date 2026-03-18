@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-	decodeContractStateToBase64,
-	parseStateNumber,
-	parseStateString
-} from '../contract-state'
+import { decodeContractStateToBase64, parseStateNumber, parseStateString } from '../contract-state'
 import { encode } from '../serialization'
 
 describe('Contract State Utilities', () => {

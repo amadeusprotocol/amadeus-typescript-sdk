@@ -167,9 +167,7 @@ export class TransactionBuilder {
 	 */
 	contract<TAbi extends AbiDefinition>(abi: TAbi): SignedContract<TAbi> {
 		if (!this.privateKey) {
-			throw new Error(
-				'Private key required. Initialize builder with private key.'
-			)
+			throw new Error('Private key required. Initialize builder with private key.')
 		}
 		return createContract(abi).connect(this.privateKey)
 	}
@@ -192,20 +190,14 @@ export class TransactionBuilder {
 	 * const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', call)
 	 * ```
 	 */
-	static signCall(
-		senderPrivkey: string,
-		call: ContractCall
-	): BuildTransactionResult {
+	static signCall(senderPrivkey: string, call: ContractCall): BuildTransactionResult {
 		return signContractCall(senderPrivkey, call)
 	}
 
 	/**
 	 * Build an unsigned transaction from a ContractCall (static)
 	 */
-	static buildFromCall(
-		call: ContractCall,
-		signerPk: Uint8Array
-	): UnsignedTransactionWithHash {
+	static buildFromCall(call: ContractCall, signerPk: Uint8Array): UnsignedTransactionWithHash {
 		return buildUnsignedFromCall(signerPk, call)
 	}
 
@@ -357,7 +349,11 @@ export class TransactionBuilder {
 	static buildSignedTransfer(input: TransferTransactionInput): BuildTransactionResult {
 		return TransactionBuilder.signCall(
 			input.senderPrivkey,
-			buildCoinTransfer({ recipient: input.recipient, amount: input.amount, symbol: input.symbol })
+			buildCoinTransfer({
+				recipient: input.recipient,
+				amount: input.amount,
+				symbol: input.symbol
+			})
 		)
 	}
 

@@ -163,11 +163,7 @@ export function createContract<TAbi extends AbiDefinition>(abi: TAbi): TypedCont
 
 	for (const fn of abi.abi) {
 		contract[fn.name] = (params?: Record<string, string>) => {
-			return buildContractCall(
-				abi,
-				fn.name as never,
-				(params ?? {}) as never
-			)
+			return buildContractCall(abi, fn.name as never, (params ?? {}) as never)
 		}
 	}
 
@@ -188,11 +184,7 @@ function createSignedContract<TAbi extends AbiDefinition>(
 
 	for (const fn of abi.abi) {
 		contract[fn.name] = (params?: Record<string, string>) => {
-			const call = buildContractCall(
-				abi,
-				fn.name as never,
-				(params ?? {}) as never
-			)
+			const call = buildContractCall(abi, fn.name as never, (params ?? {}) as never)
 			return signContractCall(privateKey, call)
 		}
 	}
