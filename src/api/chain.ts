@@ -33,7 +33,7 @@ export class ChainAPI {
 	 * @example
 	 * ```ts
 	 * const { entry } = await sdk.chain.getTip()
-	 * console.log('Current height:', entry.height)
+	 * console.log('Current height:', entry.header.height)
 	 * ```
 	 */
 	async getTip(): Promise<GetTipResponse> {
@@ -48,7 +48,7 @@ export class ChainAPI {
 	 * @example
 	 * ```ts
 	 * const { stats } = await sdk.chain.getStats()
-	 * console.log('Total entries:', stats.total_entries)
+	 * console.log('Tip height:', stats.height)
 	 * ```
 	 */
 	async getStats(): Promise<GetStatsResponse> {

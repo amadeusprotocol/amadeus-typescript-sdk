@@ -59,7 +59,7 @@ const sdk = new AmadeusSDK({
 
 // Query chain
 const tip = await sdk.chain.getTip()
-console.log('Current height:', tip.entry.height)
+console.log('Current height:', tip.entry.header.height)
 
 // Query wallet balance
 const balance = await sdk.wallet.getBalance('5Kd3N...', 'AMA')

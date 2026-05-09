@@ -42,12 +42,13 @@ async function basicExamples() {
 	console.log('3. Querying chain information...')
 	try {
 		const tip = await sdk.chain.getTip()
-		console.log('Current Chain Height:', tip.entry.height)
+		console.log('Current Chain Height:', tip.entry.header.height)
 		console.log('Latest Block Hash:', tip.entry.hash)
 
-		const stats = await sdk.chain.getStats()
-		console.log('Total Entries:', stats.stats.total_entries)
-		console.log('Total Transactions:', stats.stats.total_transactions)
+		const { stats } = await sdk.chain.getStats()
+		console.log('Tip Height:', stats.height)
+		console.log('Tx Pool Size:', stats.tx_pool_size)
+		console.log('Burned (AMA):', stats.burned)
 	} catch (error) {
 		console.error('Error querying chain:', error)
 	}
@@ -62,8 +63,11 @@ async function basicExamples() {
 		console.log('AMA Balance:', balance.balance.float)
 		console.log('Balance (atomic units):', balance.balance.flat)
 
-		const allBalances = await sdk.wallet.getAllBalances(keypair.publicKey)
-		console.log('All Token Balances:', Object.keys(allBalances.balances))
+		const { balances } = await sdk.wallet.getAllBalances(keypair.publicKey)
+		console.log(
+			'All Token Balances:',
+			balances.map((b) => `${b.symbol}: ${b.float}`)
+		)
 	} catch (error) {
 		console.error('Error querying balance:', error)
 	}

@@ -27,9 +27,11 @@ export class TransactionAPI {
 	 *
 	 * @example
 	 * ```ts
-	 * const result = await sdk.transaction.submit(txPacked)
-	 * if (result.error === 'ok') {
-	 *   console.log('Transaction hash:', result.hash)
+	 * try {
+	 *   const { hash } = await sdk.transaction.submit(txPacked)
+	 *   console.log('Transaction hash:', hash)
+	 * } catch (err) {
+	 *   console.error('Submission failed:', err.message)
 	 * }
 	 * ```
 	 */

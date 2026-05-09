@@ -413,11 +413,16 @@ export interface LockupUnlockInput {
 }
 
 /**
- * Transaction metadata
+ * Transaction metadata (as returned by tx query endpoints).
  */
 export interface TransactionMetadata {
+	/** Hash of the entry containing this tx (Base58) */
 	entry_hash: string
+	/** Height of the entry containing this tx */
 	entry_height: number
+	/** Finality status — present on `chain.getTransaction` once the tx is rooted */
+	status?: 'finalized' | string
+	/** Direction — only present on `chain.getTransactionEventsByAccount` results */
 	tx_event?: TransactionEventType
 }
 
@@ -425,8 +430,8 @@ export interface TransactionMetadata {
  * Transaction receipt structure
  */
 export interface TransactionReceipt {
-	/** Execution result  */
-	result: TransactionExecutionError | string
+	/** Execution result — `null` for successful txs without a return value */
+	result: TransactionExecutionError | string | null
 	/** Execution logs (array of ASCII dump strings) */
 	logs: string[]
 	/** Success flag */
@@ -436,10 +441,12 @@ export interface TransactionReceipt {
 }
 
 /**
- * Transaction result
+ * Transaction result (legacy field — `receipt` is preferred).
+ *
+ * `error` is `null` for successful txs.
  */
 export interface TransactionResult {
-	error: TransactionValidationError | string
+	error: TransactionValidationError | string | null
 }
 
 /**
@@ -498,58 +505,106 @@ export interface TransactionFilters {
 // ----------------------------------------------------------------------------
 
 /**
- * Chain entry header structure
+ * Chain entry header structure (as returned by the node).
+ *
+ * Source of truth: `format_entry_for_client/1` in `ex/lib/api/api_chain.ex`.
  */
 export interface ChainEntryHeader {
-	height: number
-	timestamp: number
-	mutations_hash: string
+	/** Slot number — strictly increasing, time-based */
 	slot: number
+	/** Block height (canonical chain position) */
+	height: number
+	/** Previous slot number */
 	prev_slot: number
+	/** Previous entry hash (Base58) */
 	prev_hash: string
+	/** Data-randomness (Base58) */
 	dr: string
+	/** VRF output (Base58) */
 	vr: string
+	/** Signer's public key (Base58) */
 	signer: string
-	txs_hash: string
+	/** Root transaction hash (Base58, optional) */
 	root_tx?: string
+	/** Root validator (Base58, optional) */
 	root_validator?: string
 }
 
 /**
- * Chain entry structure
+ * Chain entry structure (as returned by the node).
+ *
+ * The `height` lives at `entry.header.height`, NOT at the top level.
  */
 export interface ChainEntry {
+	/** Header — height, slot, signer, etc. live here */
+	header: ChainEntryHeader
+	/** Entry hash (Base58) */
 	hash: string
-	height: number
-	timestamp: number
-	mutations_hash: string
-	tx_count?: number
+	/** Number of transactions in this entry */
+	tx_count: number
+	/** Validator participation mask (Base58, optional) */
 	mask?: string
+	/** Number of validators reflected in `mask` */
+	mask_size?: number
+	/** Consensus state — present once a validator quorum is reached */
 	consensus?: {
+		/** Fraction of validator weight that has signed (0–1) */
 		score: number
+		/** True once score ≥ 0.67 (finalized) */
 		finality_reached: boolean
+		/** Mutations-hash Base58 — hash of state mutations applied by this entry */
 		mut_hash: string
 	}
-	header_unpacked: ChainEntryHeader
+	/**
+	 * Hash of the next entry once finality has been reached on it.
+	 * Only set on `chain.getByHash` responses.
+	 */
+	next_entry_hash_finality_reached?: string
+	/**
+	 * Filtered transactions — only set on `chain.getByHash` when called with
+	 * `filterOnFunction`.
+	 */
+	txs_filtered?: Transaction[]
 }
 
 /**
- * Chain statistics
+ * Chain statistics (as returned by `/api/chain/stats`).
+ *
+ * Source of truth: `API.Chain.stats/1` in `ex/lib/api/api_chain.ex`.
  */
 export interface ChainStats {
+	/** Current tip height */
 	height: number
-	total_entries: number
-	total_transactions: number
-	tip_hash?: string
-	tip?: ChainEntry
-	tx_pool_size?: number
-	cur_validator?: string
-	next_validator?: string
-	emission_for_epoch?: number
-	circulating?: number
-	total_supply_y3?: number
-	total_supply_y30?: number
-	pflops?: number
+	/** Most recent finalized (rooted) height */
+	rooted_height: number
+	/** Hash of the tip entry (Base58) */
+	tip_hash: string
+	/** Full tip entry */
+	tip: ChainEntry
+	/** Number of pending transactions in the mempool */
+	tx_pool_size: number
+	/** Validator scheduled to produce the current entry (Base58) */
+	cur_validator: string
+	/** Validator scheduled to produce the next entry (Base58) */
+	next_validator: string
+	/** Emission for the current epoch (AMA float) */
+	emission_for_epoch: number
+	/** Circulating supply (AMA float) */
+	circulating: number
+	/** Total AMA burned (float) */
+	burned: number
+	/** Projected total supply at year 3 */
+	total_supply_y3: number
+	/** Projected total supply at year 30 */
+	total_supply_y30: number
+	/** Current difficulty bits */
+	diff_bits: number
+	/** Estimated PFLOPS across the validator set */
+	pflops: number
+	/** Recent throughput estimate (transactions per second) */
+	txs_per_sec: number
+	/** Current segment VRF hash (Base58) */
+	segment_vr_hash: string
 }
 
 // ----------------------------------------------------------------------------
@@ -570,17 +625,6 @@ export interface TokenBalance {
  */
 export interface WalletBalance {
 	balance: {
-		float: number
-		flat: number
-		symbol: string
-	}
-}
-
-/**
- * Wallet balances map
- */
-export interface WalletBalances {
-	[symbol: string]: {
 		float: number
 		flat: number
 		symbol: string
@@ -612,13 +656,18 @@ export interface ContractData {
 }
 
 /**
- * Richlist entry structure
+ * Richlist entry structure (as returned by `/api/contract/richlist`).
+ * Source of truth: `API.Contract.richlist/0` in `ex/lib/api/api_contract.ex`.
  */
 export interface RichlistEntry {
-	address: string
-	balance: string
+	/** Account public key (Base58) */
+	pk: string
+	/** Token symbol (always 'AMA' for now) */
 	symbol: string
-	rank: number
+	/** Balance in atomic units */
+	flat: number
+	/** Balance in human-readable units */
+	float: number
 }
 
 // ----------------------------------------------------------------------------
@@ -626,10 +675,14 @@ export interface RichlistEntry {
 // ----------------------------------------------------------------------------
 
 /**
- * Epoch score structure
+ * Epoch score structure.
+ *
+ * The all-validators variant returns a tuple array `[pk, score][]`.
+ * The single-pk variant returns `{ score }` (the SDK strips the `error: 'ok'`
+ * wrapper).
  */
 export type EpochScoreAll = [string, number][]
-export type EpochScoreSingle = { error: 'ok'; score: number }
+export type EpochScoreSingle = { score: number }
 export type EpochScore = EpochScoreAll | EpochScoreSingle
 
 /**
@@ -773,17 +826,31 @@ export interface GetWalletTransactionsResponse {
 	txs: Transaction[]
 }
 
+/**
+ * Response from `/api/wallet/balance_all/{pk}`.
+ * The node returns balances as an array of `{ float, symbol, flat }` entries.
+ */
 export interface GetAllBalancesResponse {
-	error?: string
-	balances: TokenBalance[] | WalletBalances
+	balances: TokenBalance[]
 }
 
 // ----------------------------------------------------------------------------
 // Contract API Response Types
 // ----------------------------------------------------------------------------
 
+/**
+ * Response from `/api/contract/validate`.
+ *
+ * Always returns the validation result and any logs emitted by the validator.
+ * Note: the node currently returns `error: 'ok'` on success, which the SDK
+ * strips — making `error` undefined when validation succeeds. Check `logs`
+ * for diagnostic output regardless.
+ */
 export interface ValidateBytecodeResponse {
-	error: string
+	/** Validation error code, if any (undefined on success after SDK strips `:ok`) */
+	error?: string
+	/** Validator logs (ASCII-dumped) */
+	logs?: string[]
 }
 
 export interface GetRichlistResponse {
@@ -794,17 +861,22 @@ export interface GetRichlistResponse {
 // Epoch API Response Types
 // ----------------------------------------------------------------------------
 
+/**
+ * Response from `/api/epoch/get_emission_address/{pk}`.
+ * The `error: 'ok'` envelope is stripped by the SDK.
+ */
 export interface GetEmissionAddressResponse {
-	error: 'ok'
+	/** Configured emission address (Base58), or `null` if not set */
 	emission_address: string | null
 }
 
 /**
- * Response for checking if solution is in epoch
+ * Response from `/api/epoch/sol_in_epoch/{epoch}/{solHash}`.
+ *
+ * Empty object on success. The SDK throws `AmadeusSDKError` for
+ * `invalid_epoch` / `sol_not_found` (caller can distinguish by `error.message`).
  */
-export interface GetSolInEpochResponse {
-	error: 'ok' | 'invalid_epoch' | 'sol_not_found'
-}
+export type GetSolInEpochResponse = Record<string, never>
 
 // ----------------------------------------------------------------------------
 // Peer API Response Types
@@ -841,19 +913,30 @@ export interface SubmitTransactionRequestQuery {
 	txPacked: Uint8Array
 }
 
+/**
+ * Response from `/api/tx/submit` on success.
+ *
+ * The SDK strips the `error: 'ok'` envelope and throws `AmadeusSDKError`
+ * on validation failure — so this success type contains only the hash.
+ */
 export interface SubmitTransactionResponse {
-	error: TransactionValidationError | string
-	hash?: string
+	/** Submitted transaction hash (Base58) */
+	hash: string
 }
 
 /**
- * Response for submit and wait transaction
+ * Response from `/api/tx/submit_and_wait` on success.
+ *
+ * The SDK strips the `error: 'ok'` envelope and throws `AmadeusSDKError`
+ * on validation failure or wait timeout.
  */
 export interface SubmitAndWaitTransactionResponse {
-	error: TransactionValidationError | string
-	hash?: string
-	metadata?: TransactionMetadata
-	receipt?: TransactionReceipt
+	/** Submitted transaction hash (Base58) */
+	hash: string
+	/** Metadata about the entry containing the tx */
+	metadata: TransactionMetadata
+	/** Execution receipt */
+	receipt: TransactionReceipt
 }
 
 // ----------------------------------------------------------------------------

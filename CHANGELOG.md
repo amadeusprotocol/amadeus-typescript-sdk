@@ -5,6 +5,107 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-05-09
+
+### Fixed
+
+End-to-end audit of every public SDK type against live mainnet responses.
+All types corrected to match the actual node API. Several types were
+not updated after node api updates.
+
+#### Chain types
+
+- **`ChainEntry`, `ChainEntryHeader`** — `entry.height`, `entry.timestamp`,
+  `entry.mutations_hash`, and `entry.header_unpacked` never existed. Fields
+  live under `entry.header.*` (slot, height, dr, vr, prev_hash, signer,
+  root_tx, root_validator, prev_slot). Added optional
+  `next_entry_hash_finality_reached` and `txs_filtered`.
+- **`ChainStats`** — `total_entries` / `total_transactions` never existed.
+  Replaced with the real fields: `rooted_height`, `tip_hash`, `tx_pool_size`,
+  `cur_validator`, `next_validator`, `emission_for_epoch`, `circulating`,
+  `total_supply_y3`, `total_supply_y30`, `burned`, `diff_bits`, `pflops`,
+  `txs_per_sec`, `segment_vr_hash`.
+
+#### Transaction types
+
+- **`TransactionMetadata`** — added `status?: 'finalized' | string` (returned
+  by `chain.getTransaction` once the tx is rooted).
+- **`TransactionReceipt.result`** — now correctly typed as nullable;
+  successful txs without a return value have `result: null`.
+- **`TransactionResult.error`** — now correctly typed as nullable;
+  successful txs have `error: null`.
+- **`SubmitTransactionResponse`** — removed phantom `error` field. The SDK
+  strips `error: 'ok'` and throws `AmadeusSDKError` on failure, so the
+  successful response is just `{ hash }`.
+- **`SubmitAndWaitTransactionResponse`** — same fix; type is now
+  `{ hash, metadata, receipt }` (all required on success).
+
+#### Contract / Epoch / Wallet types
+
+- **`RichlistEntry`** — completely wrong. Was `{ address, balance, symbol,
+  rank }`, real shape is `{ pk, symbol, flat, float }`.
+- **`ValidateBytecodeResponse`** — `error` is undefined on success after the
+  SDK strips `:ok`; added `logs` field.
+- **`GetEmissionAddressResponse`** — removed phantom `error` field; type
+  is now `{ emission_address: string | null }`.
+- **`GetSolInEpochResponse`** — type is now `Record<string, never>` (success
+  returns empty object; SDK throws on `invalid_epoch` / `sol_not_found`).
+- **`EpochScoreSingle`** — removed phantom `error` field; type is now
+  `{ score: number }`.
+- **`GetAllBalancesResponse`** — dropped legacy `WalletBalances` map type
+  (never returned by the node) and the optional `error` field.
+
+#### Documentation
+
+- **README, all 9 docs pages, `examples/api-usage.ts`, `examples/basic-usage.ts`**
+  — fixed 20+ broken `if (result.error === 'ok')` patterns. The SDK strips
+  the `:ok` envelope on success and throws `AmadeusSDKError` on failure, so
+  this branch never executed at runtime — examples now use `try/catch`.
+- All `tip.entry.height` references updated to `tip.entry.header.height`.
+- `richlist[i].address`/`balance`/`rank` examples corrected to
+  `richlist[i].pk`/`float`/`flat`/`symbol`.
+
+### Migration
+
+```diff
+// Chain entry shape
+- tip.entry.height
++ tip.entry.header.height
+
+- entry.timestamp        // never existed
+- entry.mutations_hash   // never existed
+- entry.header_unpacked  // never existed; key is .header
++ entry.header.height, entry.header.signer, etc.
+
+// Chain stats
+- stats.total_entries        // never existed
+- stats.total_transactions   // never existed
++ stats.height, stats.rooted_height, stats.burned, etc.
+
+// Submit / submitAndWait responses (SDK throws on failure, no error field on success)
+- if (result.error === 'ok') console.log(result.hash)
++ try { const { hash } = await sdk.transaction.submit(txPacked); /* … */ }
++ catch (err) { console.error(err.message) }
+
+// Richlist entries
+- richlist[i].address        → richlist[i].pk
+- richlist[i].balance        → richlist[i].flat (atomic) or .float (display)
+- richlist[i].rank           → use array index instead
+
+// Single-pk epoch score
+- if (result.error === 'ok') return result.score
++ const { score } = await sdk.epoch.getScore(pk)
+```
+
+If your code was already accessing `entry.header.height`, `richlist[i].pk`,
+or wrapping submits in `try/catch`, no runtime change is needed — TypeScript
+just agrees with reality now.
+
+No runtime changes — `dist/*.js` behaviour is identical to 1.1.1. Only
+`.d.ts` types and documentation changed. The audit covered all 29 public
+SDK methods; their request/response shapes are now verified against live
+mainnet (`mainnet-rpc.ama.one`).
+
 ## [1.1.1] - 2026-05-09
 
 ### Documentation

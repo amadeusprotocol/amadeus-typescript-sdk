@@ -21,23 +21,25 @@ async function apiUsageExamples() {
 	try {
 		// Get chain tip
 		const tip = await sdk.chain.getTip()
-		console.log('Current Height:', tip.entry.height)
+		console.log('Current Height:', tip.entry.header.height)
 		console.log('Latest Hash:', tip.entry.hash)
 
 		// Get chain stats
-		const stats = await sdk.chain.getStats()
-		console.log('Total Entries:', stats.stats.total_entries)
-		console.log('Total Transactions:', stats.stats.total_transactions)
+		const { stats } = await sdk.chain.getStats()
+		console.log('Tip Height:', stats.height)
+		console.log('Rooted Height:', stats.rooted_height)
+		console.log('Tx Pool Size:', stats.tx_pool_size)
+		console.log('Burned (AMA):', stats.burned)
 
 		// Get entry by height
-		if (tip.entry.height > 0) {
-			const entry = await sdk.chain.getByHeight(tip.entry.height - 1)
+		if (tip.entry.header.height > 0) {
+			const entry = await sdk.chain.getByHeight(tip.entry.header.height - 1)
 			console.log('Previous Entry:', entry.entries.length > 0 ? 'Found' : 'Not found')
 		}
 
 		// Get transaction events for an account (using a real address from the chain)
 		// Note: Replace with an actual address that has transactions
-		if (tip.entry.height > 0) {
+		if (tip.entry.header.height > 0) {
 			try {
 				const testAddress = tip.entry.hash // Use a real hash from the chain
 				const events = await sdk.chain.getTransactionEventsByAccount(testAddress, {
