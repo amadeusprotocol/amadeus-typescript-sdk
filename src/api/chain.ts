@@ -13,7 +13,10 @@ import type {
 	GetByHeightResponse,
 	GetTransactionsInEntryResponse,
 	GetTransactionEventsByAccountResponse,
-	Transaction
+	Transaction,
+	TxByFilterParams,
+	TxByFilterResponse,
+	GetKpiResponse
 } from '../types'
 import { Base58HashSchema, TransactionFiltersSchema } from '../schemas'
 import { Schema } from 'effect'
@@ -169,5 +172,42 @@ export class ChainAPI {
 			`/api/chain/tx_events_by_account/${account}`,
 			filters as Record<string, unknown>
 		)
+	}
+
+	/**
+	 * Query transactions by arbitrary filter (signer, receiver, contract, function).
+	 *
+	 * All filter fields are optional; provide only the ones you want to constrain.
+	 * Returns a cursor for pagination — pass it back as `cursor` in a subsequent call.
+	 *
+	 * @example
+	 * ```ts
+	 * const { txs, cursor } = await sdk.chain.getByFilter({
+	 *   signer: '5Kd3N...',
+	 *   contract: 'Coin',
+	 *   function: 'transfer',
+	 *   limit: 50,
+	 *   sort: 'desc'
+	 * })
+	 * ```
+	 */
+	async getByFilter(filters: TxByFilterParams = {}): Promise<TxByFilterResponse> {
+		return this.client.get<TxByFilterResponse>(
+			'/api/chain/tx_by_filter',
+			filters as Record<string, unknown>
+		)
+	}
+
+	/**
+	 * Get protocol-level KPIs (burned, fees, active validators/peers, total tx, UAW, etc.).
+	 *
+	 * @example
+	 * ```ts
+	 * const { kpi } = await sdk.chain.getKpi()
+	 * console.log('Total tx:', kpi.total_tx)
+	 * ```
+	 */
+	async getKpi(): Promise<GetKpiResponse> {
+		return this.client.get<GetKpiResponse>('/api/chain/kpi')
 	}
 }

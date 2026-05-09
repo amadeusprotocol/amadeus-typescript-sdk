@@ -869,3 +869,103 @@ export interface ProofValidators {
 	validators: string[]
 	proof: ValidatorProofData
 }
+
+/**
+ * Contract state proof response structure (`/api/proof/contractstate`).
+ * `value` and `result` are present only when a value is supplied for verification.
+ */
+export interface ContractStateProof {
+	namespace: string
+	key: string
+	proof: ValidatorProofData
+	value?: string
+	result?: boolean
+}
+
+// ----------------------------------------------------------------------------
+// Contract View Types
+// ----------------------------------------------------------------------------
+
+/**
+ * Parameters for `/api/contract/view` (read-only on-chain function execution).
+ */
+export interface ContractViewParams {
+	/** Contract name (e.g. 'Coin', 'Lockup') or Base58-encoded contract address */
+	contract: string
+	/** Function name to invoke */
+	function: string
+	/** Function args (strings or raw bytes) */
+	args?: SerializableValue[]
+	/** Optional caller public key as 48-byte raw bytes; defaults to 48 zero bytes */
+	pk?: Uint8Array
+}
+
+/**
+ * Response from `/api/contract/view`.
+ */
+export interface ContractViewResponse {
+	success: boolean
+	result: string
+	logs: string[]
+}
+
+// ----------------------------------------------------------------------------
+// Chain KPI / Filter Types
+// ----------------------------------------------------------------------------
+
+/**
+ * Protocol-level KPIs returned by `/api/chain/kpi`.
+ */
+export interface ChainKpi {
+	ama_burned: number
+	fees_paid: number
+	active_validator_keys: number
+	active_peers: number
+	block_time: number
+	total_tx: number
+	uaw: number
+}
+
+export interface GetKpiResponse {
+	kpi: ChainKpi
+}
+
+/**
+ * Filters accepted by `/api/chain/tx_by_filter`.
+ * All fields are optional. `signer`/`arg0`/`cursor` are Base58-encoded strings.
+ */
+export interface TxByFilterParams {
+	/** Base58 signer public key (also accepted as `sender` or `pk` aliases on the node) */
+	signer?: string
+	/** Base58 first-arg value — typically the receiver address */
+	arg0?: string
+	/** Contract name (ASCII) — for Base58-encoded contracts use `contract_b58` */
+	contract?: string
+	/** Base58-encoded contract address (mutually exclusive with `contract`) */
+	contract_b58?: string
+	/** Function name */
+	function?: string
+	/** Page size (default 100, max 1000 enforced server-side) */
+	limit?: number
+	/** Sort order (default 'asc') */
+	sort?: 'asc' | 'desc'
+	/** Base58-encoded cursor from a previous response */
+	cursor?: string
+}
+
+export interface TxByFilterResponse {
+	cursor: string | null
+	txs: Transaction[]
+}
+
+// ----------------------------------------------------------------------------
+// Submit-and-wait options
+// ----------------------------------------------------------------------------
+
+/**
+ * Optional flags for `/api/tx/submit_and_wait`.
+ */
+export interface SubmitAndWaitOptions {
+	/** Wait until the transaction is finalized (consensus reached) instead of just confirmed */
+	finalized?: boolean
+}

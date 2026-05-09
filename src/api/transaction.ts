@@ -8,6 +8,7 @@ import type { AmadeusClient } from '../client'
 import type {
 	SubmitTransactionResponse,
 	SubmitAndWaitTransactionResponse,
+	SubmitAndWaitOptions,
 	GetTransactionsInEntryResponse,
 	Transaction
 } from '../types'
@@ -38,27 +39,30 @@ export class TransactionAPI {
 	}
 
 	/**
-	 * Submit a transaction and wait for confirmation
+	 * Submit a transaction and wait for confirmation.
 	 *
-	 * @param txPacked - Packed transaction as Uint8Array or Base58 string
-	 * @returns Promise resolving to submission result with confirmation
-	 * @throws {AmadeusSDKError} If transaction data is invalid
+	 * Pass `{ finalized: true }` to wait for finality (consensus reached) instead
+	 * of just confirmation. Default behavior is to return as soon as the tx is
+	 * included in an entry.
 	 *
 	 * @example
 	 * ```ts
+	 * // Wait for confirmation only (fast)
 	 * const result = await sdk.transaction.submitAndWait(txPacked)
-	 * if (result.error === 'ok') {
-	 *   console.log('Transaction hash:', result.hash)
-	 *   console.log('Entry hash:', result.entry_hash)
-	 * }
+	 *
+	 * // Wait for finality (slower but stronger guarantee)
+	 * const finalized = await sdk.transaction.submitAndWait(txPacked, { finalized: true })
 	 * ```
 	 */
-	async submitAndWait(txPacked: Uint8Array | string): Promise<SubmitAndWaitTransactionResponse> {
+	async submitAndWait(
+		txPacked: Uint8Array | string,
+		options: SubmitAndWaitOptions = {}
+	): Promise<SubmitAndWaitTransactionResponse> {
 		validate(TransactionDataSchema, txPacked)
-		return this.client.post<SubmitAndWaitTransactionResponse>(
-			'/api/tx/submit_and_wait',
-			txPacked
-		)
+		const endpoint = options.finalized
+			? '/api/tx/submit_and_wait?finalized=true'
+			: '/api/tx/submit_and_wait'
+		return this.client.post<SubmitAndWaitTransactionResponse>(endpoint, txPacked)
 	}
 
 	/**

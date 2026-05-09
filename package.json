@@ -1,6 +1,6 @@
 {
 	"name": "@amadeus-protocol/sdk",
-	"version": "1.0.8",
+	"version": "1.1.0",
 	"description": "Official TypeScript/JavaScript SDK for Amadeus Protocol - Core utilities for serialization, cryptography, transaction building, and API client",
 	"repository": {
 		"type": "git",
@@ -27,8 +27,8 @@
 		"LICENSE"
 	],
 	"scripts": {
-		"build": "tsc -p tsconfig.build.json",
-		"dev": "tsc --watch",
+		"build": "tsdown",
+		"dev": "tsdown --watch",
 		"lint": "eslint src",
 		"lint:fix": "eslint src --fix",
 		"prettier:check": "prettier --check .",
@@ -74,6 +74,7 @@
 		"@vitest/coverage-v8": "^2.1.0",
 		"eslint": "^9.21.0",
 		"prettier": "^3.7.2",
+		"tsdown": "^0.22.0",
 		"typescript": "^5.7.2",
 		"typescript-eslint": "^8.24.1",
 		"vitest": "^2.1.0"

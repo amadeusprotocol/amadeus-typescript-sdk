@@ -53,6 +53,15 @@ import { createContract, type SignedContract } from './contracts/contract'
 import { buildCoinTransfer } from './contracts/coin'
 import { LOCKUP_PRIME_ABI } from './contracts/lockup-prime/abi'
 import { LOCKUP_ABI } from './contracts/lockup/abi'
+import { buildNftTransfer, buildNftMint, buildNftCreateCollection } from './contracts/nft/helpers'
+import type {
+	NftTransferInput,
+	NftTransferParams,
+	NftMintInput,
+	NftMintParams,
+	NftCreateCollectionInput,
+	NftCreateCollectionParams
+} from './contracts/nft/types'
 
 /**
  * Transaction Builder for Amadeus Protocol
@@ -455,5 +464,58 @@ export class TransactionBuilder {
 			vaultIndex: input.vaultIndex.toString()
 		})
 		return TransactionBuilder.signCall(input.senderPrivkey, call)
+	}
+
+	// ========================================================================
+	// Nft (instance)
+	// ========================================================================
+
+	/** Build and sign an `Nft.transfer` transaction */
+	nftTransfer(input: NftTransferParams): BuildTransactionResult {
+		if (!this.privateKey) {
+			throw new Error(
+				'Private key required. Initialize builder with private key or use static method.'
+			)
+		}
+		return this.buildAndSignCall(buildNftTransfer(input))
+	}
+
+	/** Build and sign an `Nft.mint` transaction (collection owner only) */
+	nftMint(input: NftMintParams): BuildTransactionResult {
+		if (!this.privateKey) {
+			throw new Error(
+				'Private key required. Initialize builder with private key or use static method.'
+			)
+		}
+		return this.buildAndSignCall(buildNftMint(input))
+	}
+
+	/** Build and sign an `Nft.create_collection` transaction */
+	nftCreateCollection(input: NftCreateCollectionParams): BuildTransactionResult {
+		if (!this.privateKey) {
+			throw new Error(
+				'Private key required. Initialize builder with private key or use static method.'
+			)
+		}
+		return this.buildAndSignCall(buildNftCreateCollection(input))
+	}
+
+	// ========================================================================
+	// Nft (static)
+	// ========================================================================
+
+	/** Build and sign an `Nft.transfer` transaction (static) */
+	static buildSignedNftTransfer(input: NftTransferInput): BuildTransactionResult {
+		return TransactionBuilder.signCall(input.senderPrivkey, buildNftTransfer(input))
+	}
+
+	/** Build and sign an `Nft.mint` transaction (static) */
+	static buildSignedNftMint(input: NftMintInput): BuildTransactionResult {
+		return TransactionBuilder.signCall(input.senderPrivkey, buildNftMint(input))
+	}
+
+	/** Build and sign an `Nft.create_collection` transaction (static) */
+	static buildSignedNftCreateCollection(input: NftCreateCollectionInput): BuildTransactionResult {
+		return TransactionBuilder.signCall(input.senderPrivkey, buildNftCreateCollection(input))
 	}
 }

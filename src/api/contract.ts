@@ -5,9 +5,17 @@
  */
 
 import type { AmadeusClient } from '../client'
-import type { ValidateBytecodeResponse, GetRichlistResponse, ContractDataValue } from '../types'
+import type {
+	ValidateBytecodeResponse,
+	GetRichlistResponse,
+	ContractDataValue,
+	ContractViewParams,
+	ContractViewResponse,
+	SerializableValue
+} from '../types'
 import { BytecodeSchema, ContractKeySchema } from '../schemas'
 import { validate } from '../validation'
+import { encode } from '../serialization'
 
 export class ContractAPI {
 	constructor(private client: AmadeusClient) {}
@@ -76,5 +84,33 @@ export class ContractAPI {
 	 */
 	async getRichlist(): Promise<GetRichlistResponse> {
 		return this.client.get<GetRichlistResponse>('/api/contract/richlist')
+	}
+
+	/**
+	 * Execute a contract function in read-only (view) mode against the current chain tip.
+	 *
+	 * No transaction is created and no state is mutated. Useful for querying contract
+	 * state through the contract's own logic (e.g. computed balances, vault status).
+	 *
+	 * @param params - Contract, function, args, and optional caller pk
+	 * @returns Promise resolving to `{ success, result, logs }`
+	 *
+	 * @example
+	 * ```ts
+	 * const { success, result } = await sdk.contract.view({
+	 *   contract: 'LockupPrime',
+	 *   function: 'view_balance',
+	 *   args: ['my_vault']
+	 * })
+	 * ```
+	 */
+	async view(params: ContractViewParams): Promise<ContractViewResponse> {
+		const body: Record<string, SerializableValue> = {
+			contract: params.contract,
+			function: params.function,
+			args: params.args ?? []
+		}
+		if (params.pk) body.pk = params.pk
+		return this.client.post<ContractViewResponse>('/api/contract/view', encode(body))
 	}
 }
