@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-09
+
+### Documentation
+
+- README updated to reflect 1.1.0 features (`contract.view`, `chain.getByFilter`,
+  `chain.getKpi`, `proof.getContractStateProof`, `submitAndWait { finalized }`,
+  NFT support).
+- ESM-only consumption note added to installation section.
+- Fixed broken Signing API reference (previously listed `signTx`/`signOOB` which
+  do not exist; replaced with the actual signing primitives).
+- Added Mnemonics (BIP39), Contract ABIs, and Proof API sections.
+
+No code or runtime changes — `dist/` is identical to 1.1.0.
+
 ## [1.1.0] - 2026-05-09
 
 ### Fixed
@@ -61,7 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keypairs from human-readable seed phrases:
   - `generateMnemonic()`
   - `validateMnemonic(mnemonic)`
-  - `mnemonicToSeedBase58(mnemonic, passphrase?)`
+  - `mnemonicToSeedBase58(mnemonic)`
   - `encodeVaultSecret`, `decodeVaultSecret`, `detectInputType`
 - New `@scure/bip39` runtime dependency.
 

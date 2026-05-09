@@ -20,6 +20,19 @@ pnpm add @amadeus-protocol/sdk
 bun add @amadeus-protocol/sdk
 ```
 
+> **ESM-only**: this package is published as pure ESM (`"type": "module"`). Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler (Vite, webpack, esbuild, Metro). For CommonJS consumers, run via [`tsx`](https://github.com/privatenumber/tsx). See [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting.md) for the `1.0.x` `ERR_MODULE_NOT_FOUND` issue and upgrade path.
+
+## What's New in 1.1.0
+
+- **`contract.view()`** — read-only contract execution
+- **`chain.getByFilter()`** / **`chain.getKpi()`** — filtered tx queries + protocol KPIs
+- **`proof.getContractStateProof()`** — merkle proofs for contract state
+- **`submitAndWait(txPacked, { finalized: true })`** — wait for finality instead of confirmation
+- **NFT contract** — `NFT_ABI`, `buildNftTransfer/Mint/CreateCollection`, `TransactionBuilder.nftTransfer/nftMint/nftCreateCollection`
+- **ESM fix** — published `dist/*.js` now resolves correctly under raw `node` (the `1.0.x` `ERR_MODULE_NOT_FOUND` bug)
+
+See the [CHANGELOG](./CHANGELOG.md) for full release history.
+
 ## Features
 
 - **Canonical Serialization (VecPack)**: Deterministic encoding/decoding for cryptographic operations
@@ -72,6 +85,8 @@ const sdk = new AmadeusSDK({
 const stats = await sdk.chain.getStats()
 const tip = await sdk.chain.getTip()
 const entry = await sdk.chain.getByHash('5Kd3N...')
+const { txs, cursor } = await sdk.chain.getByFilter({ contract: 'Coin', function: 'transfer' })
+const { kpi } = await sdk.chain.getKpi()
 
 // Wallet API
 const balance = await sdk.wallet.getBalance('5Kd3N...', 'AMA')
@@ -79,12 +94,18 @@ const allBalances = await sdk.wallet.getAllBalances('5Kd3N...')
 
 // Transaction API
 const result = await sdk.transaction.submit(txPacked)
-const resultWithWait = await sdk.transaction.submitAndWait(txPacked)
+const confirmed = await sdk.transaction.submitAndWait(txPacked)
+const finalized = await sdk.transaction.submitAndWait(txPacked, { finalized: true })
 const tx = await sdk.transaction.get('5Kd3N...')
 
 // Contract API
 const contractData = await sdk.contract.get(key)
 const richlist = await sdk.contract.getRichlist()
+const { success, result } = await sdk.contract.view({
+	contract: 'LockupPrime',
+	function: 'view_balance',
+	args: ['my_vault']
+})
 
 // Epoch API
 const scores = await sdk.epoch.getScore()
@@ -93,6 +114,10 @@ const emission = await sdk.epoch.getEmissionAddress('5Kd3N...')
 // Peer API
 const nodes = await sdk.peer.getNodes()
 const trainers = await sdk.peer.getTrainers()
+
+// Proof API
+const validatorProof = await sdk.proof.getValidators(entryHash)
+const stateProof = await sdk.proof.getContractStateProof(stateKey)
 ```
 
 ### Key Generation
@@ -149,6 +174,137 @@ const { txHash, txPacked } = builder.buildAndSign('Coin', 'transfer', [
 	toAtomicAma(10.5).toString(),
 	'AMA'
 ])
+```
+
+#### ABI-Driven (Lockup, LockupPrime, etc.)
+
+The recommended pattern for built-in contracts. Pass any ABI to `builder.contract(abi)` and get fully-typed function calls:
+
+```typescript
+import {
+	TransactionBuilder,
+	LOCKUP_PRIME_ABI,
+	LOCKUP_ABI,
+	toAtomicAma
+} from '@amadeus-protocol/sdk'
+
+const builder = new TransactionBuilder('5Kd3N...')
+
+// LockupPrime — auto-typed methods derived from the ABI
+builder.contract(LOCKUP_PRIME_ABI).lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+builder.contract(LOCKUP_PRIME_ABI).unlock({ vaultIndex: '3' })
+builder.contract(LOCKUP_PRIME_ABI).daily_checkin({ vaultIndex: '7' })
+
+// Lockup
+builder.contract(LOCKUP_ABI).unlock({ vaultIndex: '5' })
+```
+
+#### NFT (transfer, mint, create_collection)
+
+The `Nft` built-in contract has dedicated builder methods. NFT amounts are integer counts, **not** AMA atomic units.
+
+```typescript
+const builder = new TransactionBuilder(privateKey)
+
+// Create a collection (caller becomes owner)
+builder.nftCreateCollection({ collection: 'AGENTIC', soulbound: false })
+
+// Mint tokens (collection owner only)
+builder.nftMint({ recipient: '5Kd3N...', amount: 10, collection: 'AGENTIC', token: '1' })
+
+// Transfer
+builder.nftTransfer({ recipient: '5Kd3N...', amount: 1, collection: 'AGENTIC', token: '1' })
+```
+
+Static variants: `TransactionBuilder.buildSignedNftTransfer/Mint/CreateCollection(input)` — each takes the same params plus `senderPrivkey`.
+
+### Signing Transactions
+
+The SDK supports two patterns. Pick whichever fits your workflow.
+
+#### Pattern 1 — Auto-signed (high-level, recommended)
+
+The `TransactionBuilder` instance methods build **and** sign in one call. Best for app code where you have the private key in hand.
+
+```typescript
+import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+
+const builder = new TransactionBuilder('5Kd3N...') // Base58 seed
+
+// Coin transfer
+const a = builder.transfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
+
+// ABI-driven (any contract)
+const b = builder.contract(LOCKUP_PRIME_ABI).lock({
+	amount: toAtomicAma(100).toString(),
+	tier: '30d'
+})
+
+// NFT
+const c = builder.nftTransfer({
+	recipient: '5Kd3N...',
+	amount: 1,
+	collection: 'AGENTIC',
+	token: '1'
+})
+
+// All return { txHash, txPacked } ready for sdk.transaction.submit(txPacked)
+```
+
+#### Pattern 2 — Manual: build a `ContractCall`, sign separately
+
+Build a `ContractCall` with a standalone helper or `createContract(ABI)`, then sign it independently with `TransactionBuilder.signCall(privkey, call)`. Useful when:
+
+- You want to inspect or log the call before signing
+- The signing key lives somewhere else (HSM, separate process, separate machine)
+- You want to batch-build and sign at the end
+
+```typescript
+import {
+	TransactionBuilder,
+	createContract,
+	LOCKUP_PRIME_ABI,
+	buildCoinTransfer,
+	buildNftTransfer,
+	toAtomicAma
+} from '@amadeus-protocol/sdk'
+
+// Build a ContractCall — three ways:
+
+// A. Standalone helper (Coin)
+const callA = buildCoinTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
+
+// B. Standalone helper (NFT)
+const callB = buildNftTransfer({
+	recipient: '5Kd3N...',
+	amount: 1,
+	collection: 'AGENTIC',
+	token: '1'
+})
+
+// C. ABI-driven, any contract
+const lockupPrime = createContract(LOCKUP_PRIME_ABI)
+const callC = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+
+// Inspect if you want
+console.log('Will call:', callC.contract, callC.method, callC.args)
+
+// Sign with any private key (no builder instance needed)
+const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', callC)
+```
+
+#### Build-unsigned-then-sign (debugging)
+
+If you need to inspect the full unsigned transaction (nonce, signer, action) before signing:
+
+```typescript
+const builder = new TransactionBuilder('5Kd3N...')
+
+const unsigned = builder.buildTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
+console.log('Nonce:', unsigned.tx.nonce)
+console.log('Action:', unsigned.tx.action)
+
+const { txHash, txPacked } = builder.sign(unsigned)
 ```
 
 #### Using Static Methods
@@ -229,22 +385,19 @@ const atomic = toAtomicAma(1.5) // Returns 1500000000
 const ama = fromAtomicAma(1500000000) // Returns 1.5
 ```
 
-### Signing Transactions
+### Mnemonics (BIP39)
 
 ```typescript
-import { TransactionBuilder } from '@amadeus-protocol/sdk'
+import { generateMnemonic, validateMnemonic, mnemonicToSeedBase58 } from '@amadeus-protocol/sdk'
 
-// Using TransactionBuilder instance
-const builder = new TransactionBuilder('5Kd3N...')
+// Generate a 12-word mnemonic
+const mnemonic = generateMnemonic()
 
-// Build unsigned transaction
-const unsignedTx = builder.build('Coin', 'transfer', args)
-
-// Sign the transaction
-const { txHash, txPacked } = builder.sign(unsignedTx)
-
-// Or build and sign in one step
-const { txHash, txPacked } = builder.buildAndSign('Coin', 'transfer', args)
+// Validate a mnemonic
+if (validateMnemonic(mnemonic)) {
+	// Derive a Base58 seed (compatible with TransactionBuilder)
+	const seedBase58 = mnemonicToSeedBase58(mnemonic)
+}
 ```
 
 ### Encoding Utilities
@@ -300,6 +453,13 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 - `derivePublicKeyFromSeedBase58(base58Seed: string): string` - Derive public key from Base58 seed
 - `deriveSkAndSeed64FromBase58Seed(base58Seed64: string)` - Derive secret key and seed
 
+### Mnemonics (BIP39)
+
+- `generateMnemonic(): string` - Generate a 12-word BIP39 mnemonic
+- `validateMnemonic(mnemonic: string): boolean` - Validate a BIP39 mnemonic
+- `mnemonicToSeedBase58(mnemonic: string): string` - Derive a Base58 seed from a mnemonic
+- `encodeVaultSecret`, `decodeVaultSecret`, `detectInputType` - Vault helpers
+
 ### Encoding
 
 - `toBase58(buf: Uint8Array): string` - Encode bytes to Base58
@@ -310,11 +470,6 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 - `base64ToArrayBuffer(base64: string): ArrayBuffer` - Convert Base64 to ArrayBuffer
 - `uint8ArrayToArrayBuffer(bytes: Uint8Array): ArrayBuffer` - Convert Uint8Array to ArrayBuffer
 - `arrayBufferToUint8Array(buffer: ArrayBuffer): Uint8Array` - Convert ArrayBuffer to Uint8Array
-
-### Signing
-
-- `signTx(hash: Uint8Array, sk: PrivKey): Uint8Array` - Sign a transaction hash
-- `signOOB(sk: string, msg: Uint8Array): Uint8Array` - Sign an out-of-band message
 
 ### Conversion
 
@@ -333,18 +488,48 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 
 - `TransactionBuilder` - Class for building and signing transactions
     - **Constructor:** `new TransactionBuilder(privateKey?: string)` - Create a new builder instance
-    - **Instance Methods:**
-        - `build(contract, method, args, signerPk?): UnsignedTransactionWithHash` - Build an unsigned transaction
-        - `sign(unsignedTx, signerSk?): BuildTxResult` - Sign an unsigned transaction
-        - `buildAndSign(contract, method, args, signerPk?, signerSk?): BuildTxResult` - Build and sign in one step
-        - `buildTransfer(input, signerPk?): UnsignedTransactionWithHash` - Build an unsigned transfer
-        - `transfer(input): BuildTxResult` - Build and sign a transfer (convenience)
-    - **Static Methods:**
-        - `build(signerPk, contract, method, args): UnsignedTransactionWithHash` - Build unsigned transaction
-        - `sign(unsignedTx, signerSk): BuildTxResult` - Sign an unsigned transaction
-        - `buildAndSign(signerPk, signerSk, contract, method, args): BuildTxResult` - Build and sign in one step
-        - `buildTransfer(input, signerPk): UnsignedTransactionWithHash` - Build unsigned transfer
-        - `buildSignedTransfer(input): BuildTxResult` - Build and sign transfer (convenience)
+    - **ABI-driven (recommended):**
+        - `contract(abi)` - Returns a typed, signer-bound contract interface; each ABI function becomes a method that builds and signs in one step
+    - **Generic instance methods:**
+        - `build(contract, method, args, signerPk?): UnsignedTransactionWithHash`
+        - `sign(unsignedTx, signerSk?): BuildTransactionResult`
+        - `buildAndSign(contract, method, args, signerPk?, signerSk?): BuildTransactionResult`
+        - `buildFromCall(call): UnsignedTransactionWithHash`
+        - `buildAndSignCall(call): BuildTransactionResult`
+    - **Coin transfer:**
+        - `buildTransfer(input, signerPk?): UnsignedTransactionWithHash`
+        - `transfer(input): BuildTransactionResult`
+    - **NFT (Nft contract):**
+        - `nftTransfer({ recipient, amount, collection, token }): BuildTransactionResult`
+        - `nftMint({ recipient, amount, collection, token }): BuildTransactionResult`
+        - `nftCreateCollection({ collection, soulbound? }): BuildTransactionResult`
+    - **Lockup / LockupPrime convenience methods:**
+        - `lockupUnlock({ vaultIndex }): BuildTransactionResult`
+        - `lockupPrimeLock({ amount, tier }): BuildTransactionResult`
+        - `lockupPrimeUnlock({ vaultIndex }): BuildTransactionResult`
+        - `lockupPrimeDailyCheckin({ vaultIndex }): BuildTransactionResult`
+    - **Static methods:** `signCall`, `buildFromCall`, `buildAndSignCall`, `buildSignedTransfer`, `buildSignedNft{Transfer,Mint,CreateCollection}`, `buildSignedLockup{Unlock}`, `buildSignedLockupPrime{Lock,Unlock,DailyCheckin}`
+
+### Contract ABIs
+
+`as const` ABI definitions for built-in contracts. Pass any ABI to `createContract(abi)` or `builder.contract(abi)` for fully-typed function calls.
+
+- `LOCKUP_ABI` - `Lockup` (vesting) — `unlock(vaultIndex)`
+- `LOCKUP_PRIME_ABI` - `LockupPrime` — `lock(amount, tier)`, `unlock(vaultIndex)`, `daily_checkin(vaultIndex)`
+- `NFT_ABI` - `Nft` — `transfer`, `mint`, `create_collection`
+
+Standalone builders that return a `ContractCall`:
+
+- `buildCoinTransfer({ recipient, amount, symbol })`
+- `buildNftTransfer({ recipient, amount, collection, token })`
+- `buildNftMint({ recipient, amount, collection, token })`
+- `buildNftCreateCollection({ collection, soulbound? })`
+- `createContract(abi).fn(params)` - generic ABI-driven builder
+- `buildContractCall(abi, fn, params)` - lower-level ABI-driven builder
+
+### Full API Reference
+
+For complete documentation including request/response types, error handling, and end-to-end examples, see [docs.ama.one/sdk](https://docs.ama.one/sdk/1.-introduction.md).
 
 ## Examples
 
