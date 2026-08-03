@@ -605,6 +605,33 @@ export interface ChainStats {
 	txs_per_sec: number
 	/** Current segment VRF hash (Base58) */
 	segment_vr_hash: string
+	/** Total supply emitted so far (AMA float) */
+	total_supply?: number
+	/** AMA locked in LockupVault stakes (AMA float) */
+	total_locked?: number
+	/** Height the supply figures were computed at */
+	supply_computed_at_height?: number
+	/** Per-validator state, keyed by validator public key (Base58) */
+	validators?: Record<string, ChainStatsValidator>
+}
+
+/**
+ * Per-validator entry inside `ChainStats.validators`.
+ * Source of truth: `NodeStatsGen` in `ex/lib/node`.
+ */
+export interface ChainStatsValidator {
+	/** Commission in effect this epoch, in basis points */
+	commission_bps: number
+	/** A queued commission raise, or absent when none is pending */
+	commission_pending?: { bps: number; epoch: number }
+	/** Epoch score (solutions found) */
+	sols: number
+	/** Whether the validator is in the current epoch's set */
+	in_validator_set: boolean
+	/** Stake backing this validator (AMA float) */
+	staked: number
+	/** Stake backing this validator (atomic) */
+	staked_flat: number
 }
 
 // ----------------------------------------------------------------------------

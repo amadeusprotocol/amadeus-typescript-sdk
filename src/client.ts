@@ -97,6 +97,43 @@ export class AmadeusClient {
 	}
 
 	/**
+	 * Make a POST request that returns raw bytes.
+	 *
+	 * Some node endpoints (notably `/api/contract/get_prefix`) answer with a
+	 * VecPack binary body, not JSON. `post()` would run it through `text()` and
+	 * mangle it, so binary reads go through here instead.
+	 *
+	 * @param endpoint - API endpoint path
+	 * @param data - Request body data (Uint8Array for binary, object for JSON)
+	 * @returns Promise resolving to the raw response body
+	 * @throws {AmadeusSDKError} On a non-2xx response
+	 */
+	async postBinary(endpoint: string, data?: unknown): Promise<Uint8Array> {
+		validate(NonEmptyStringSchema, endpoint)
+
+		const url = this.buildUrl(endpoint)
+		const { body, contentType } = this.prepareBody(data)
+
+		const response = await this.request(url, {
+			method: 'POST',
+			body,
+			headers: {
+				'Content-Type': contentType
+			}
+		})
+
+		if (!response.ok) {
+			// Reuse the JSON/text error decoding, which throws for !ok. The
+			// explicit throw after it keeps a future change to handleResponse
+			// from turning an error response into a bogus empty body.
+			await this.handleResponse(response)
+			throw new AmadeusSDKError(`HTTP ${response.status}`, response.status)
+		}
+
+		return new Uint8Array(await response.arrayBuffer())
+	}
+
+	/**
 	 * Build full URL with query parameters
 	 */
 	private buildUrl(endpoint: string, params?: Record<string, unknown>): string {

@@ -14,7 +14,8 @@ import {
 	WalletAPI,
 	ContractAPI,
 	EpochAPI,
-	ProofAPI
+	ProofAPI,
+	StakingAPI
 } from './api'
 import { SDK_VERSION, NODE_API_URL } from './constants'
 
@@ -49,6 +50,9 @@ import { SDK_VERSION, NODE_API_URL } from './constants'
  *
  * // Query epoch data
  * const scores = await sdk.epoch.getScore()
+ *
+ * // Query staking (LockupVault) position
+ * const position = await sdk.staking.getPosition('5Kd3N...')
  * ```
  */
 export class AmadeusSDK {
@@ -75,6 +79,9 @@ export class AmadeusSDK {
 
 	/** Proof API module for validator proofs */
 	public readonly proof: ProofAPI
+
+	/** Staking API module for LockupVault positions */
+	public readonly staking: StakingAPI
 
 	/**
 	 * Create a new AmadeusSDK instance
@@ -105,6 +112,7 @@ export class AmadeusSDK {
 		this.contract = new ContractAPI(this.client)
 		this.epoch = new EpochAPI(this.client)
 		this.proof = new ProofAPI(this.client)
+		this.staking = new StakingAPI(this.client)
 	}
 
 	/**

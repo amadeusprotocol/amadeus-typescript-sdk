@@ -225,3 +225,53 @@ describe('AmadeusClient', () => {
 		})
 	})
 })
+
+describe('AmadeusClient.postBinary', () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it('returns the raw response body', async () => {
+		const bytes = new Uint8Array([0x07, 0x01, 0x05, 0x01, 0x39])
+		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			headers: new Headers({ 'content-type': 'application/octet-stream' }),
+			arrayBuffer: async () => bytes.buffer
+		})
+
+		const client = new AmadeusClient({ baseUrl: NODE_API_URL })
+		const result = await client.postBinary('/api/contract/get_prefix', new Uint8Array([1]))
+
+		expect(result).toBeInstanceOf(Uint8Array)
+		expect(Array.from(result)).toEqual(Array.from(bytes))
+	})
+
+	it('returns an empty array for an empty body', async () => {
+		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			headers: new Headers(),
+			arrayBuffer: async () => new ArrayBuffer(0)
+		})
+
+		const client = new AmadeusClient({ baseUrl: NODE_API_URL })
+
+		expect((await client.postBinary('/api/contract/get_prefix')).length).toBe(0)
+	})
+
+	it('throws rather than returning an empty body on an error response', async () => {
+		;(global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+			ok: false,
+			status: 500,
+			statusText: 'Internal Server Error',
+			headers: new Headers({ 'content-type': 'application/json' }),
+			json: async () => ({ error: 'boom' }),
+			arrayBuffer: async () => new ArrayBuffer(0)
+		})
+
+		const client = new AmadeusClient({ baseUrl: NODE_API_URL })
+
+		await expect(client.postBinary('/api/contract/get_prefix')).rejects.toThrow(AmadeusSDKError)
+	})
+})
