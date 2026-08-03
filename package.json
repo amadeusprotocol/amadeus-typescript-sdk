@@ -78,6 +78,7 @@
 		"tsdown": "^0.22.0",
 		"typescript": "^5.7.2",
 		"typescript-eslint": "^8.24.1",
+		"unrun": "0.3.0",
 		"vitest": "^2.1.0"
 	}
 }
