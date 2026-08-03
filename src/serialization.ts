@@ -74,6 +74,10 @@ export function decode(bytes: Uint8Array | number[]): DecodedValue {
  * keys and values are binary (Uint8Array). This convenience function decodes
  * the binary data and returns the entries as an array of tuples.
  *
+ * A prefix that matches nothing comes back as an empty LIST rather than an empty
+ * map, and an empty body is possible too — both decode to no entries. Anything
+ * else non-map is an error.
+ *
  * @param bytes - VecPack-encoded bytes (Uint8Array or ArrayBuffer)
  * @returns Array of [key, value] tuples
  * @throws Error if the data is not a valid VecPack map or entries are not binary
@@ -92,7 +96,12 @@ export function decodeContractState(
 	bytes: Uint8Array | ArrayBuffer
 ): Array<[Uint8Array, Uint8Array]> {
 	const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
+	if (data.length === 0) return []
+
 	const decoded = decode(data)
+
+	// No matches: the node answers with an empty list, not an empty map.
+	if (Array.isArray(decoded) && decoded.length === 0) return []
 
 	if (!(decoded instanceof Map)) {
 		throw new Error(`Expected MAP type, got ${typeof decoded}`)

@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-07-31
+
+### Added
+
+#### Staking (`LockupVault`)
+
+New `contracts/lockup-vault` module and `sdk.staking` API for reading an account's
+staking position. Amadeus staking is the `bic:lockup_vault:` contract — AMA locked
+for a tier duration, backing a validator, earning a locked-in APY. This is distinct
+from the existing `Lockup` (`bic:lockup:`, vesting) and `LockupPrime`
+(`bic:lockup_prime:`, points) modules, which are unchanged.
+
+- **`sdk.staking.getPosition(pk, opts?)`** — every vault owned by an account plus the
+  rolled-up `StakingSummary`: total staked, principal, accrued, vault counts by
+  lifecycle state, stake-weighted APY, estimated epoch/annual yield, next maturity
+  epoch, and stake per backing validator.
+- **`sdk.staking.getVaults`**, **`getAllVaults`**, **`getValidatorCommissions`**,
+  **`getCurrentEpoch`**.
+- **Building blocks** for callers that own their HTTP layer:
+  `buildOwnerVaultsKeyPrefix`, `buildAllVaultsKeyPrefix`, `buildVaultKey`,
+  `buildValidatorCommissionKey`, `parseLockupVaultEntry(ies)`,
+  `decodeLockupVaultRecord`, `splitLockupVaultKey`, `parseValidatorCommissions`,
+  `summarizeLockupVaults`, `estimateEpochYieldFlat`, `estimateYieldOverEpochs`,
+  `flatToAma`, `epochFromHeight`, `daysToEpochs`, `monthsToEpochs`, and the
+  consensus constants (`APY_EPOCH_DENOM`, `UNLOCK_PERIOD_EPOCHS`,
+  `MIN_VAULT_AMOUNT_FLAT`, `VALIDATOR_MIN_STAKE_FLAT`, ...).
+- Amounts are atomic `bigint` (`*Flat` fields). Real positions exceed `2^53` atomic
+  units, so `Number(flat) / 1e9` is lossy; `flatToAma()` splits integer and
+  fractional parts instead.
+- Epoch-dependent fields are resolved against a reference epoch, matching the node:
+  a queued validator change is not live until its epoch, and maturity / unlock are
+  epoch comparisons.
+- Verified against mainnet: summing every vault reproduces the node's own
+  `stats.total_locked` exactly.
+
+#### Binary contract reads
+
+- **`contract.getPrefixEntries(prefix)`** — returns decoded `[key, value]` byte pairs.
+  `/api/contract/get_prefix` answers with a VecPack binary body; the existing
+  `getPrefix()` parses responses as text and cannot represent it.
+- **`client.postBinary(endpoint, data)`** — POST returning the raw response body.
+
+### Fixed
+
+- **`decodeContractState`** threw `Expected MAP type, got object` when a prefix matched
+  nothing. The node answers an empty result with an empty VecPack *list*, not an empty
+  map. Empty lists and empty bodies now decode to `[]`. This was the common path for
+  any account with no contract state — e.g. every wallet that has never staked.
+
+### Changed
+
+- **`ChainStats`** — added the fields the node returns but the type omitted:
+  `total_locked`, `total_supply`, `supply_computed_at_height`, and `validators`
+  (new `ChainStatsValidator`: `commission_bps`, `commission_pending`, `sols`,
+  `in_validator_set`, `staked`, `staked_flat`). All optional, so existing code is
+  unaffected.
+
 ## [1.1.2] - 2026-05-09
 
 ### Fixed

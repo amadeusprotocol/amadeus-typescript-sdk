@@ -13,9 +13,10 @@ import type {
 	ContractViewResponse,
 	SerializableValue
 } from '../types'
+import { AmadeusSDKError } from '../types'
 import { BytecodeSchema, ContractKeySchema } from '../schemas'
 import { validate } from '../validation'
-import { encode } from '../serialization'
+import { decodeContractState, encode } from '../serialization'
 
 export class ContractAPI {
 	constructor(private client: AmadeusClient) {}
@@ -70,6 +71,38 @@ export class ContractAPI {
 	async getPrefix(key: Uint8Array | string): Promise<ContractDataValue[]> {
 		validate(ContractKeySchema, key)
 		return this.client.post<ContractDataValue[]>('/api/contract/get_prefix', key)
+	}
+
+	/**
+	 * Get contract data by key prefix as decoded `[key, value]` byte pairs.
+	 *
+	 * `/api/contract/get_prefix` answers with a VecPack binary map, which
+	 * `getPrefix()` cannot represent (it parses the body as text). Use this when
+	 * the values are themselves binary records — contract vaults, for example.
+	 *
+	 * Keys come back with the queried prefix stripped: querying
+	 * `bic:lockup_vault:vault:{owner}:` yields keys that are just the vault index.
+	 *
+	 * @param key - Prefix bytes, or a plain string sent as UTF-8. Contract key
+	 *   prefixes are raw byte strings (`bic:lockup_vault:vault:`), not Base58 —
+	 *   anything containing a public key must be passed as bytes.
+	 * @returns Promise resolving to `[key, value]` pairs of raw bytes
+	 *
+	 * @example
+	 * ```ts
+	 * const entries = await sdk.contract.getPrefixEntries(
+	 *   buildOwnerVaultsKeyPrefix(publicKey)
+	 * )
+	 * ```
+	 */
+	async getPrefixEntries(key: Uint8Array | string): Promise<Array<[Uint8Array, Uint8Array]>> {
+		const prefix = typeof key === 'string' ? new TextEncoder().encode(key) : key
+		if (prefix.length === 0) {
+			throw new AmadeusSDKError('Contract key prefix must not be empty')
+		}
+		const bytes = await this.client.postBinary('/api/contract/get_prefix', prefix)
+		if (bytes.length === 0) return []
+		return decodeContractState(bytes)
 	}
 
 	/**

@@ -22,6 +22,23 @@ bun add @amadeus-protocol/sdk
 
 > **ESM-only**: this package is published as pure ESM (`"type": "module"`). Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler (Vite, webpack, esbuild, Metro). For CommonJS consumers, run via [`tsx`](https://github.com/privatenumber/tsx). See [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting.md) for the `1.0.x` `ERR_MODULE_NOT_FOUND` issue and upgrade path.
 
+## What's New in 1.2.0
+
+- **Staking (`LockupVault`)** — read an account's staking position in one call:
+  `sdk.staking.getPosition(publicKey)` returns every vault plus the rolled-up totals
+  (total staked, accrued yield, stake-weighted APY, maturity/unlock state, stake per validator)
+- **`contract.getPrefixEntries()`** — prefix reads that return raw `[key, value]` byte pairs.
+  `/api/contract/get_prefix` answers with a VecPack _binary_ body, which `getPrefix()` mangles
+  by parsing it as text
+- **`client.postBinary()`** — POST returning raw bytes, for the binary endpoints
+- **`decodeContractState()` fix** — a prefix matching nothing comes back as an empty VecPack
+  _list_, not an empty map. It used to throw; it now decodes to `[]`. This is the common case
+  for any account that has never staked
+- **`ChainStats`** — added the fields the node actually returns: `total_locked`, `total_supply`,
+  `supply_computed_at_height`, and `validators` (with per-validator `commission_bps` and stake)
+
+See the [CHANGELOG](./CHANGELOG.md) for full release history.
+
 ## What's New in 1.1.0
 
 - **`contract.view()`** — read-only contract execution
@@ -41,6 +58,7 @@ See the [CHANGELOG](./CHANGELOG.md) for full release history.
 - **Transaction Building**: Create and sign Amadeus protocol transactions
 - **Token Conversions**: Convert between atomic units and human-readable amounts
 - **Encoding Utilities**: Base58 and Base64 encoding/decoding for addresses, keys, and binary data
+- **Staking**: Read LockupVault positions — totals, per-vault detail, and stake-weighted APY
 - **API Client**: Full-featured HTTP client for interacting with Amadeus nodes
 - **Type Safety**: Complete TypeScript definitions for all APIs
 - **Zero Dependencies**: Uses native fetch (no axios or other HTTP libraries)
@@ -526,6 +544,37 @@ Standalone builders that return a `ContractCall`:
 - `buildNftCreateCollection({ collection, soulbound? })`
 - `createContract(abi).fn(params)` - generic ABI-driven builder
 - `buildContractCall(abi, fn, params)` - lower-level ABI-driven builder
+
+### Staking (LockupVault)
+
+Amadeus staking is the `LockupVault` contract (`bic:lockup_vault:`): AMA locked for a tier duration,
+backing a validator and earning a locked-in APY. Not to be confused with `Lockup` (vesting) or
+`LockupPrime` (points).
+
+```ts
+const position = await sdk.staking.getPosition('5Kd3N...')
+
+position.totalStaked // AMA staked = principal + yield compounded into the vaults
+position.totalAccrued // yield compounded so far
+position.weightedApyPercent // stake-weighted average APY
+position.vaultCount // how many vaults
+position.nextMatureEpoch // when the soonest lock expires
+position.vaults // per-vault detail (tier, amount, APY, validator, maturity)
+```
+
+- `sdk.staking.getPosition(pk, opts?)` — vaults plus rolled-up totals
+- `sdk.staking.getVaults(pk, opts?)` — just the vaults
+- `sdk.staking.getAllVaults(opts?)` — every vault on the chain (explorer-style views)
+- `sdk.staking.getValidatorCommissions(opts?)` — commission per validator, epoch-resolved
+- `sdk.staking.getCurrentEpoch()` — epoch from the chain tip
+
+Pass `{ currentEpoch }` across several calls so they resolve against one epoch and skip the extra
+round trip. The building blocks are exported too, for callers that own their own HTTP layer:
+`buildOwnerVaultsKeyPrefix`, `decodeContractState`, `parseLockupVaultEntries`,
+`summarizeLockupVaults`, `epochFromHeight`, `flatToAma`.
+
+Amounts are atomic `bigint` (`*Flat`) so nothing is lost to float rounding — real positions exceed
+`2^53` atomic units. Use `flatToAma()` or the pre-computed `number` fields.
 
 ### Full API Reference
 
