@@ -4,7 +4,8 @@ import {
 	decryptWithPassword,
 	generateSalt,
 	generateIV,
-	deriveKey
+	deriveKey,
+	DEFAULT_PBKDF2_ITERATIONS
 } from '../encryption'
 import {
 	uint8ArrayToBase64,
@@ -141,6 +142,54 @@ describe('Encryption', () => {
 			const decrypted = await decryptWithPassword(encrypted, password)
 
 			expect(decrypted).toBe(plaintext)
+		})
+	})
+
+	// The payload used to record no KDF parameters, so deriveKey's `iterations`
+	// argument could never be honoured on the way back in: decryption always used
+	// the default count and any other choice surfaced as "Incorrect password".
+	describe('KDF parameters recorded in the payload', () => {
+		it('records the KDF and iteration count it used', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			expect(encrypted.kdf).toBe('PBKDF2-SHA256')
+			expect(encrypted.iterations).toBe(DEFAULT_PBKDF2_ITERATIONS)
+		})
+
+		it('round-trips a payload written with a non-default iteration count', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw', 1000)
+			expect(encrypted.iterations).toBe(1000)
+			expect(await decryptWithPassword(encrypted, 'pw')).toBe('secret')
+		})
+
+		it('reads a legacy payload that records no iteration count', async () => {
+			const encrypted = await encryptWithPassword('legacy secret', 'pw', 100_000)
+			const legacy = {
+				encryptedData: encrypted.encryptedData,
+				iv: encrypted.iv,
+				salt: encrypted.salt
+			}
+			expect(await decryptWithPassword(legacy, 'pw')).toBe('legacy secret')
+		})
+
+		it('does not decrypt a non-default payload with the legacy assumption', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw', 1000)
+			const stripped = {
+				encryptedData: encrypted.encryptedData,
+				iv: encrypted.iv,
+				salt: encrypted.salt
+			}
+			await expect(decryptWithPassword(stripped, 'pw')).rejects.toThrow(/Decryption failed/)
+		})
+
+		it('refuses an unknown KDF instead of reporting a wrong password', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			await expect(
+				decryptWithPassword({ ...encrypted, kdf: 'scrypt' }, 'pw')
+			).rejects.toThrow(/Unsupported key derivation function: scrypt/)
+		})
+
+		it('rejects a non-positive iteration count', async () => {
+			await expect(deriveKey('pw', generateSalt(), 0)).rejects.toThrow(/positive integer/)
 		})
 	})
 
