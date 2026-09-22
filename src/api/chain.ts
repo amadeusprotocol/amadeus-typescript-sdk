@@ -5,6 +5,7 @@
  */
 
 import type { AmadeusClient } from '../client'
+import type { MetricsBlockResponse } from './metrics'
 import type {
 	TransactionFilters,
 	GetTipResponse,
@@ -24,6 +25,12 @@ import { validate } from '../validation'
 
 export class ChainAPI {
 	constructor(private client: AmadeusClient) {}
+
+	/** Read canonical rooted transaction evidence; timestamps are intentionally unavailable. */
+	async getMetricsBlock(height: number): Promise<MetricsBlockResponse> {
+		if (!Number.isSafeInteger(height) || height < 0) throw new Error('Invalid metrics height')
+		return this.client.get<MetricsBlockResponse>(`/api/chain/metrics/block/${height}`)
+	}
 
 	/**
 	 * Get the current chain tip (latest entry)

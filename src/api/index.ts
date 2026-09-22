@@ -1,4 +1,5 @@
 export * from './chain'
+export * from './metrics'
 export * from './contract'
 export * from './epoch'
 export * from './peer'
