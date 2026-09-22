@@ -8,6 +8,9 @@ export interface MetricsBlock {
 	finalized: true
 	timestamp: null
 	timestamp_basis: 'unavailable'
+	/** Local node insertion time in Unix milliseconds; not verified block UTC. */
+	node_seen_time_ms?: number | null
+	node_seen_time_basis?: 'local_database_insertion'
 	transaction_count: number
 	transactions: { hash: string; signer: string; success: boolean }[]
 }
