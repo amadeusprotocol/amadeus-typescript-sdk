@@ -4,7 +4,7 @@
 	"description": "Official TypeScript/JavaScript SDK for Amadeus Protocol - Core utilities for serialization, cryptography, transaction building, and API client",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/amadeusprotocol/amadeus-typescript-sdk.git"
+		"url": "git+https://github.com/amadeusprotocol/amadeus-typescript-sdk.git"
 	},
 	"homepage": "https://github.com/amadeusprotocol/amadeus-typescript-sdk#readme",
 	"bugs": {
