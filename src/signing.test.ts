@@ -5,12 +5,7 @@ import { deriveSkAndSeed64FromBase58Seed, generateKeypair, getPublicKey } from '
 import { fromBase58 } from './encoding'
 import { NetworkType } from './networks'
 import { decode } from './serialization'
-import {
-	buildUnsigned,
-	signContractCall,
-	signUnsigned,
-	txDstForNetwork
-} from './signing'
+import { buildUnsigned, signContractCall, signUnsigned, txDstForNetwork } from './signing'
 
 const MAINNET_DST = 'AMADEUS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_TX_'
 const TESTNET_DST = 'AMADEUS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_TX_TESTNET_'
