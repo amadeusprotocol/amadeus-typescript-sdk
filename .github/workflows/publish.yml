@@ -22,8 +22,8 @@ jobs:
         name: Publish Package
         runs-on: ubuntu-latest
         permissions:
-            contents: write
-            id-token: write
+            contents: read
+            id-token: write # required for OIDC trusted publishing (no token)
 
         steps:
             - name: Checkout code
@@ -34,9 +34,13 @@ jobs:
             - name: Setup Node.js
               uses: actions/setup-node@v4
               with:
-                  node-version: '20.x'
+                  node-version: '22.x'
                   registry-url: 'https://registry.npmjs.org'
                   cache: 'npm'
+
+            # Trusted publishing (OIDC) requires npm >= 11.5.1.
+            - name: Upgrade npm
+              run: npm install -g npm@latest
 
             - name: Install dependencies
               run: npm ci
@@ -76,9 +80,14 @@ jobs:
                   npm version "${{ github.event.inputs.version }}" --no-git-tag-version
                   echo "Updated package.json to version ${{ github.event.inputs.version }}"
 
+            # OIDC trusted publishing: no token. npm authenticates via the
+            # workflow's id-token against the package's configured trusted publisher
+            # on npmjs.com. Idempotent: skips if this version is already published.
             - name: Publish to npm
-              uses: JS-DevTools/npm-publish@v3
-              with:
-                  token: ${{ secrets.NPM_TOKEN }}
-                  registry: https://registry.npmjs.org
-                  access: public
+              run: |
+                  VERSION=$(node -p "require('./package.json').version")
+                  if npm view "@amadeus-protocol/sdk@$VERSION" version >/dev/null 2>&1; then
+                    echo "v$VERSION already on npm — skipping publish"
+                  else
+                    npm publish --provenance --access public
+                  fi
