@@ -12,6 +12,7 @@ import { sha256 } from '@noble/hashes/sha2'
 
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
 import { toBase58 } from './encoding'
+import { NetworkType } from './networks'
 import { encode } from './serialization'
 import type {
 	BuildTransactionResult,
@@ -22,8 +23,19 @@ import type {
 } from './types'
 import type { ContractCall } from './contracts/contract-call'
 
-/** Domain Separation Tag for transaction signatures */
+/**
+ * Domain Separation Tags for transaction signatures. The domain is chain-bound
+ * so a tx signed on one network cannot be replayed on another: testnet uses its
+ * own DST; mainnet (and custom) keep the original. These MUST match the node's
+ * `BLS12AggSig.dst_tx/0`.
+ */
 const TX_DST = 'AMADEUS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_TX_'
+const TX_DST_TESTNET = 'AMADEUS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_TX_TESTNET_'
+
+/** The transaction signing domain for a network (defaults to mainnet). */
+export function txDstForNetwork(network?: NetworkType): string {
+	return network === NetworkType.TESTNET ? TX_DST_TESTNET : TX_DST
+}
 
 /** Generate a transaction nonce based on current timestamp */
 function generateNonce(): bigint {
@@ -72,10 +84,11 @@ export function buildUnsigned(
  */
 export function signUnsigned(
 	unsignedTx: UnsignedTransactionWithHash,
-	signerSk: PrivKey | string | Uint8Array
+	signerSk: PrivKey | string | Uint8Array,
+	network?: NetworkType
 ): BuildTransactionResult {
 	const sk = normalizeSignerSk(signerSk)
-	const signature = bls.sign(unsignedTx.hash, sk, { DST: TX_DST })
+	const signature = bls.sign(unsignedTx.hash, sk, { DST: txDstForNetwork(network) })
 	return {
 		txHash: toBase58(unsignedTx.hash),
 		txPacked: encode({ tx: unsignedTx.tx, hash: unsignedTx.hash, signature })
@@ -90,10 +103,11 @@ export function buildAndSignRaw(
 	signerSk: PrivKey | string | Uint8Array,
 	contract: string,
 	method: string,
-	args: SerializableValue[]
+	args: SerializableValue[],
+	network?: NetworkType
 ): BuildTransactionResult {
 	const unsignedTx = buildUnsigned(signerPk, contract, method, args)
-	return signUnsigned(unsignedTx, signerSk)
+	return signUnsigned(unsignedTx, signerSk, network)
 }
 
 /**
@@ -114,9 +128,10 @@ export function buildUnsignedFromCall(
  */
 export function signContractCall(
 	senderPrivkey: string,
-	call: ContractCall
+	call: ContractCall,
+	network?: NetworkType
 ): BuildTransactionResult {
 	const { seed64, sk } = deriveSkAndSeed64FromBase58Seed(senderPrivkey)
 	const signerPubKey = getPublicKey(seed64)
-	return buildAndSignRaw(signerPubKey, sk, call.contract, call.method, call.args)
+	return buildAndSignRaw(signerPubKey, sk, call.contract, call.method, call.args, network)
 }
