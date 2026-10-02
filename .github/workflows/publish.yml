@@ -1,6 +1,13 @@
 name: Publish to npm
 
 on:
+    # Auto-publish when a merge to main changes the version in package.json.
+    # npm-publish is idempotent: if the version is already on npm it skips, so a
+    # package.json change that doesn't bump the version is a no-op.
+    push:
+        branches: [main]
+        paths:
+            - package.json
     release:
         types: [published]
     workflow_dispatch:
