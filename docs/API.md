@@ -432,36 +432,37 @@ Converts atomic units to AMA amount.
 
 Password-based encryption utilities for securing sensitive wallet data using AES-GCM and PBKDF2.
 
-### `encryptWithPassword(plaintext: string, password: string): Promise<EncryptedPayload>`
+### `encryptWithPassword(plaintext: string, password: string, iterations?: number): Promise<EncryptedPayload>`
 
-Encrypts plaintext using AES-GCM encryption with PBKDF2 key derivation (100,000 iterations).
+Encrypts plaintext using AES-GCM encryption with PBKDF2 key derivation. `iterations` defaults to `DEFAULT_PBKDF2_ITERATIONS` (100,000) and is recorded in the payload, so `decryptWithPassword` reproduces the key without the caller having to supply it again. Pass `RECOMMENDED_PBKDF2_ITERATIONS` (600,000) for new vaults; note that a reader which ignores the `iterations` field cannot open such a payload.
 
 **Parameters:**
 
 - `plaintext` (string): Data to encrypt
 - `password` (string): Password for encryption
+- `iterations` (number, optional): PBKDF2 iteration count to use and record
 
-**Returns:** `Promise<EncryptedPayload>` - Object containing `encryptedData`, `iv`, and `salt` (all Base64 encoded)
+**Returns:** `Promise<EncryptedPayload>` - Object containing `encryptedData`, `iv`, `salt` (all Base64 encoded), plus the `kdf` name and `iterations` count used
 
 **Example:**
 
 ```typescript
 const encrypted = await encryptWithPassword('sensitive data', 'my-password')
-// Store encrypted.encryptedData, encrypted.iv, encrypted.salt
+// Store encrypted.encryptedData, encrypted.iv, encrypted.salt, encrypted.iterations
 ```
 
 ### `decryptWithPassword(payload: EncryptedPayload, password: string): Promise<string>`
 
-Decrypts encryptedData using the provided password.
+Decrypts encryptedData using the provided password. The key is derived with the iteration count recorded in `payload.iterations`; a payload without that field is assumed to use the legacy 100,000 so vaults written before the field existed still open.
 
 **Parameters:**
 
-- `payload` (EncryptedPayload): Encrypted payload with `encryptedData`, `iv`, and `salt`
+- `payload` (EncryptedPayload): Encrypted payload with `encryptedData`, `iv`, `salt`, and optionally `kdf` and `iterations`
 - `password` (string): Password used for encryption
 
 **Returns:** `Promise<string>` - Decrypted plaintext
 
-**Throws:** `Error` if decryption fails (wrong password or corrupted data)
+**Throws:** `Error` if decryption fails (wrong password or corrupted data), or if `payload.kdf` names a key derivation function this module does not implement
 
 **Example:**
 
