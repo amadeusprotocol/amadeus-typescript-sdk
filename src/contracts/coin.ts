@@ -4,13 +4,13 @@
  * The Coin contract is a built-in native contract with no WASM ABI file.
  * It differs from WASM contracts:
  * - First arg (recipient) is raw binary Uint8Array from fromBase58(), not a UTF-8 string
- * - Amount requires toAtomicAma() conversion
+ * - Amount requires lossless toAtomicAmaString() conversion
  *
  * This module provides a dedicated builder that handles these special encodings
  * while returning a standard ContractCall for uniform consumption by TransactionBuilder.
  */
 
-import { toAtomicAma } from '../conversion'
+import { toAtomicAmaString } from '../conversion'
 import { fromBase58 } from '../encoding'
 import type { ContractCall } from './contract-call'
 
@@ -31,13 +31,13 @@ export interface CoinTransferParams {
  *
  * Handles the special encoding requirements of the Coin contract:
  * - recipient is decoded from Base58 to raw Uint8Array
- * - amount is converted to atomic units via toAtomicAma()
+ * - amount is converted to atomic units via toAtomicAmaString() avoiding the MAX_SAFE_INTEGER ceiling
  *
  * @example
  * ```ts
  * const call = buildCoinTransfer({
  *   recipient: '5Kd3N...',
- *   amount: 10.5,
+ *   amount: '10000000',
  *   symbol: 'AMA'
  * })
  * TransactionBuilder.signCall(privateKey, call)
@@ -47,6 +47,6 @@ export function buildCoinTransfer(params: CoinTransferParams): ContractCall {
 	return {
 		contract: 'Coin',
 		method: 'transfer',
-		args: [fromBase58(params.recipient), toAtomicAma(params.amount).toString(), params.symbol]
+		args: [fromBase58(params.recipient), toAtomicAmaString(params.amount), params.symbol]
 	}
 }

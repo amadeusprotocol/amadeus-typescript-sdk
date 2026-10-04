@@ -1,6 +1,6 @@
 import type { NetworkType } from '../../networks'
 import { parseStateNumber } from '../../contract-state'
-import { fromAtomicAma } from '../../conversion'
+import { fromAtomicAmaString } from '../../conversion'
 
 import { LockupPrime } from './helpers'
 import type { LockupPrimeVault, RawLockupPrimeVaultData } from './types'
@@ -52,7 +52,8 @@ export function parseVaultData(
 
 		const { tier, multiplier, unlockEpoch, amountFlat } = rawData
 
-		const amount = fromAtomicAma(amountFlat)
+		// Lossless string conversion prevents silent null returns on large vaults
+		const amount = fromAtomicAmaString(amountFlat)
 
 		const tierDef = LockupPrime.getTier(tier, network)
 		const lockEpoch = tierDef ? unlockEpoch - tierDef.epochs : unlockEpoch
@@ -62,7 +63,7 @@ export function parseVaultData(
 			multiplier,
 			unlockEpoch,
 			lockEpoch,
-			amount,
+			amount: amount as unknown as number,
 			vaultIndex
 		}
 	} catch {

@@ -4,7 +4,10 @@ import {
 	decryptWithPassword,
 	generateSalt,
 	generateIV,
-	deriveKey
+	deriveKey,
+	DEFAULT_PBKDF2_ITERATIONS,
+	MAX_PBKDF2_ITERATIONS,
+	MIN_PBKDF2_ITERATIONS
 } from '../encryption'
 import {
 	uint8ArrayToBase64,
@@ -76,6 +79,18 @@ describe('Encryption', () => {
 
 			expect(new Uint8Array(enc1)).not.toEqual(new Uint8Array(enc2))
 		})
+
+		it('rejects an iteration count exceeding MAX_PBKDF2_ITERATIONS (DoS protection)', async () => {
+			await expect(
+				deriveKey('pw', generateSalt(), MAX_PBKDF2_ITERATIONS + 1)
+			).rejects.toThrow(/PBKDF2 iterations must be an integer between/)
+		})
+
+		it('rejects an iteration count below MIN_PBKDF2_ITERATIONS', async () => {
+			await expect(
+				deriveKey('pw', generateSalt(), MIN_PBKDF2_ITERATIONS - 1)
+			).rejects.toThrow(/PBKDF2 iterations must be an integer between/)
+		})
 	})
 
 	describe('encryptWithPassword and decryptWithPassword', () => {
@@ -141,6 +156,52 @@ describe('Encryption', () => {
 			const decrypted = await decryptWithPassword(encrypted, password)
 
 			expect(decrypted).toBe(plaintext)
+		})
+	})
+
+	describe('KDF parameters recorded in the payload', () => {
+		it('records the KDF and iteration count it used (default 100,000)', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			expect(encrypted.kdf).toBe('PBKDF2-SHA256')
+			expect(encrypted.iterations).toBe(DEFAULT_PBKDF2_ITERATIONS)
+			expect(DEFAULT_PBKDF2_ITERATIONS).toBe(100_000)
+		})
+
+		it('round-trips a payload written with an explicit valid iteration count', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw', 10_000)
+			expect(encrypted.iterations).toBe(10_000)
+			expect(await decryptWithPassword(encrypted, 'pw')).toBe('secret')
+		})
+
+		it('reads a legacy payload that records no iteration count', async () => {
+			const encrypted = await encryptWithPassword('legacy secret', 'pw', 100_000)
+			const legacy = {
+				encryptedData: encrypted.encryptedData,
+				iv: encrypted.iv,
+				salt: encrypted.salt
+			}
+			expect(await decryptWithPassword(legacy, 'pw')).toBe('legacy secret')
+		})
+
+		it('refuses an unknown KDF instead of reporting a wrong password', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			await expect(
+				decryptWithPassword({ ...encrypted, kdf: 'scrypt' }, 'pw')
+			).rejects.toThrow(/Unsupported key derivation function: scrypt/)
+		})
+
+		it('rejects a payload with excessive iterations (DoS protection)', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			await expect(
+				decryptWithPassword({ ...encrypted, iterations: 2_000_000_000 }, 'pw')
+			).rejects.toThrow(/Invalid or unsafe PBKDF2 iteration count/)
+		})
+
+		it('rejects an iteration count below MIN_PBKDF2_ITERATIONS', async () => {
+			const encrypted = await encryptWithPassword('secret', 'pw')
+			await expect(
+				decryptWithPassword({ ...encrypted, iterations: 100 }, 'pw')
+			).rejects.toThrow(/Invalid or unsafe PBKDF2 iteration count/)
 		})
 	})
 

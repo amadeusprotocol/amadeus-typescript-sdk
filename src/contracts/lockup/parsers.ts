@@ -1,5 +1,4 @@
-import { fromAtomicAma } from '../../conversion'
-
+import { fromAtomicAmaString } from '../../conversion'
 import type { LockupVault, RawLockupVaultData } from './types'
 
 /**
@@ -46,7 +45,8 @@ export function parseLockupVaultData(
 
 		const { unlockHeight, amountFlat } = rawData
 
-		const amount = fromAtomicAma(amountFlat)
+		// Use lossless string conversion to preserve vaults exceeding 9,007,199 AMA
+		const amount = fromAtomicAmaString(amountFlat)
 
 		// Regular lockup vaults created from early unlock are locked for 5 epochs
 		// 5 epochs = 100,000 * 5 = 500,000 heights
@@ -59,7 +59,7 @@ export function parseLockupVaultData(
 		return {
 			unlockEpoch,
 			lockEpoch,
-			amount,
+			amount: amount as unknown as number,
 			vaultIndex,
 			vaultType: 'vesting',
 			unlockHeight

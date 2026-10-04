@@ -8,19 +8,19 @@
  * ## Recommended: ABI-driven API
  *
  * ```ts
- * import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+ * import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAmaString } from '@amadeus-protocol/sdk'
  *
  * // Via builder.contract(abi) — typed methods, auto-signed:
  * const builder = new TransactionBuilder('5Kd3N...')
  * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
- *   amount: toAtomicAma(100).toString(),
+ *   amount: toAtomicAmaString(100),
  *   tier: '30d'
  * })
  *
  * // Or standalone:
  * import { createContract } from '@amadeus-protocol/sdk'
  * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
- * const call = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+ * const call = lockupPrime.lock({ amount: toAtomicAmaString(100), tier: '30d' })
  * const result = TransactionBuilder.signCall('5Kd3N...', call)
  * ```
  */
@@ -28,7 +28,7 @@
 import type { PrivKey } from '@noble/curves/abstract/utils'
 
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
-import { toAtomicAma } from './conversion'
+import { toAtomicAma, toAtomicAmaString } from './conversion'
 import {
 	buildUnsigned,
 	buildUnsignedFromCall,
@@ -74,7 +74,7 @@ import type {
  * // ABI-driven (recommended)
  * const builder = new TransactionBuilder('5Kd3N...')
  * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
- *   amount: toAtomicAma(100).toString(),
+ *   amount: toAtomicAmaString(100),
  *   tier: '30d'
  * })
  *
@@ -153,26 +153,6 @@ export class TransactionBuilder {
 	 *
 	 * @param abi - An ABI definition object (declared `as const`)
 	 * @returns A `SignedContract<TAbi>` with typed methods for each ABI function
-	 *
-	 * @example
-	 * ```ts
-	 * const builder = new TransactionBuilder('5Kd3N...')
-	 *
-	 * // LockupPrime — all methods auto-detected from ABI:
-	 * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
-	 *   amount: toAtomicAma(100).toString(),
-	 *   tier: '30d'
-	 * })
-	 *
-	 * builder.contract(LOCKUP_PRIME_ABI).unlock({ vaultIndex: '3' })
-	 * builder.contract(LOCKUP_PRIME_ABI).daily_checkin({ vaultIndex: '7' })
-	 *
-	 * // Lockup:
-	 * builder.contract(LOCKUP_ABI).unlock({ vaultIndex: '5' })
-	 *
-	 * // Any future contract — just pass its ABI:
-	 * builder.contract(SOME_NEW_ABI).someFunction({ param: 'value' })
-	 * ```
 	 */
 	contract<TAbi extends AbiDefinition>(abi: TAbi): SignedContract<TAbi> {
 		if (!this.privateKey) {
@@ -187,17 +167,6 @@ export class TransactionBuilder {
 
 	/**
 	 * Derive keys from a Base58 private key and sign a ContractCall.
-	 *
-	 * @param senderPrivkey - Base58 encoded private key (seed)
-	 * @param call - A ContractCall from createContract(), buildContractCall(), or buildCoinTransfer()
-	 * @returns Transaction hash and packed transaction
-	 *
-	 * @example
-	 * ```ts
-	 * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
-	 * const call = lockupPrime.lock({ amount: '100000000000', tier: '30d' })
-	 * const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', call)
-	 * ```
 	 */
 	static signCall(senderPrivkey: string, call: ContractCall): BuildTransactionResult {
 		return signContractCall(senderPrivkey, call)
@@ -375,7 +344,7 @@ export class TransactionBuilder {
 	 */
 	lockupPrimeLock(input: Omit<LockupPrimeLockInput, 'senderPrivkey'>): BuildTransactionResult {
 		return this.contract(LOCKUP_PRIME_ABI).lock({
-			amount: toAtomicAma(input.amount).toString(),
+			amount: toAtomicAmaString(input.amount),
 			tier: input.tier
 		})
 	}
@@ -424,7 +393,7 @@ export class TransactionBuilder {
 	 */
 	static buildSignedLockupPrimeLock(input: LockupPrimeLockInput): BuildTransactionResult {
 		const call = createContract(LOCKUP_PRIME_ABI).lock({
-			amount: toAtomicAma(input.amount).toString(),
+			amount: toAtomicAmaString(input.amount),
 			tier: input.tier
 		})
 		return TransactionBuilder.signCall(input.senderPrivkey, call)

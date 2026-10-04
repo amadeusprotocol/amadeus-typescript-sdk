@@ -13,10 +13,33 @@ import { uint8ArrayToArrayBuffer } from './encoding'
 // ============================================================================
 
 /**
- * PBKDF2 iterations for key derivation (100,000 iterations for security)
- * Matches web wallet implementation for consistency
+ * PBKDF2 iterations used when a payload does not specify otherwise.
+ *
+ * Retained at 100,000 for cross-wallet ecosystem synchronization. Mobile clients
+ * enforce conservative bounds, so bumping the default requires a coordinated rollout.
  */
-const PBKDF2_ITERATIONS = 100_000
+export const DEFAULT_PBKDF2_ITERATIONS = 100_000
+
+/**
+ * Iteration count assumed for a legacy payload that records no metadata.
+ */
+const LEGACY_PBKDF2_ITERATIONS = 100_000
+
+/**
+ * Maximum permitted PBKDF2 iteration count.
+ *
+ * Defends against CPU exhaustion and browser UI freezes caused by tampered,
+ * unauthenticated payload headers (e.g. malicious payloads claiming 2,000,000,000 iterations).
+ */
+export const MAX_PBKDF2_ITERATIONS = 10_000_000
+
+/**
+ * Minimum permitted PBKDF2 iteration count.
+ */
+export const MIN_PBKDF2_ITERATIONS = 1_000
+
+/** The only key derivation function this module implements. */
+const KDF_PBKDF2_SHA256 = 'PBKDF2-SHA256'
 
 /**
  * Salt length in bytes (128 bits)
@@ -45,14 +68,23 @@ async function importPbkdf2Key(password: string): Promise<CryptoKey> {
  *
  * @param password - Password string
  * @param salt - Salt as Uint8Array or ArrayBuffer
- * @param iterations - Number of PBKDF2 iterations (default: 100,000)
+ * @param iterations - Number of PBKDF2 iterations (default: DEFAULT_PBKDF2_ITERATIONS)
  * @returns Derived AES-GCM key
  */
 export async function deriveKey(
 	password: string,
 	salt: Uint8Array | ArrayBuffer,
-	iterations: number = PBKDF2_ITERATIONS
+	iterations: number = DEFAULT_PBKDF2_ITERATIONS
 ): Promise<CryptoKey> {
+	if (
+		!Number.isInteger(iterations) ||
+		iterations < MIN_PBKDF2_ITERATIONS ||
+		iterations > MAX_PBKDF2_ITERATIONS
+	) {
+		throw new Error(
+			`PBKDF2 iterations must be an integer between ${MIN_PBKDF2_ITERATIONS} and ${MAX_PBKDF2_ITERATIONS}`
+		)
+	}
 	const baseKey = await importPbkdf2Key(password)
 	const saltBuffer = salt instanceof Uint8Array ? uint8ArrayToArrayBuffer(salt) : salt
 
@@ -102,9 +134,6 @@ export function generateIV(): Uint8Array {
 
 /**
  * Encrypted data payload (Base64 encoded)
- *
- * Uses Base64 encoding for binary payloads like vaults (more efficient than Base58).
- * Base58 is reserved for addresses, keys, and hashes.
  */
 export interface EncryptedPayload {
 	/** Encrypted data (Base64 encoded) */
@@ -113,35 +142,29 @@ export interface EncryptedPayload {
 	iv: string
 	/** Salt used for key derivation (Base64 encoded) */
 	salt: string
+	/** Key derivation function algorithm */
+	kdf?: string
+	/** PBKDF2 iteration count */
+	iterations?: number
 }
 
 /**
  * Encrypt plaintext with a password using AES-GCM
  *
- * Uses PBKDF2 for key derivation and Base64 encoding for output.
- * Suitable for encrypting sensitive wallet data like private keys.
- *
- * **Encoding Standard**: Uses Base64 encoding for binary payloads (RFC 4648).
- * Base58 is used for addresses, keys, and hashes elsewhere in the SDK.
- *
  * @param plaintext - Plaintext string to encrypt
  * @param password - Password for encryption
- * @returns Encrypted payload with encryptedData, IV, and salt (all Base64 encoded)
- *
- * @example
- * ```ts
- * const encrypted = await encryptWithPassword('sensitive data', 'my-password')
- * // Store encrypted.encryptedData, encrypted.iv, encrypted.salt
- * ```
+ * @param iterations - PBKDF2 iterations to use; recorded in payload. Defaults to DEFAULT_PBKDF2_ITERATIONS (100,000).
+ * @returns Encrypted payload
  */
 export async function encryptWithPassword(
 	plaintext: string,
-	password: string
+	password: string,
+	iterations: number = DEFAULT_PBKDF2_ITERATIONS
 ): Promise<EncryptedPayload> {
 	const enc = new TextEncoder()
 	const iv = generateIV()
 	const salt = generateSalt()
-	const key = await deriveKey(password, salt)
+	const key = await deriveKey(password, salt, iterations)
 
 	const ivBuffer = uint8ArrayToArrayBuffer(iv)
 	const encryptedBuf = await crypto.subtle.encrypt(
@@ -153,7 +176,9 @@ export async function encryptWithPassword(
 	return {
 		encryptedData: uint8ArrayToBase64(new Uint8Array(encryptedBuf)),
 		iv: uint8ArrayToBase64(iv),
-		salt: uint8ArrayToBase64(salt)
+		salt: uint8ArrayToBase64(salt),
+		kdf: KDF_PBKDF2_SHA256,
+		iterations
 	}
 }
 
@@ -163,23 +188,35 @@ export async function encryptWithPassword(
  * @param payload - Encrypted payload (Base64 encoded)
  * @param password - Password used for encryption
  * @returns Decrypted plaintext string
- * @throws {Error} If decryption fails (wrong password or corrupted data)
- *
- * @example
- * ```ts
- * const decrypted = await decryptWithPassword(encrypted, 'my-password')
- * ```
+ * @throws {Error} If decryption fails, an unsupported KDF is provided, or iterations exceed safety limits
  */
 export async function decryptWithPassword(
 	payload: EncryptedPayload,
 	password: string
 ): Promise<string> {
 	const dec = new TextDecoder()
+
+	if (payload.kdf !== undefined && payload.kdf !== KDF_PBKDF2_SHA256) {
+		throw new Error(`Unsupported key derivation function: ${payload.kdf}`)
+	}
+
+	const iterations = payload.iterations ?? LEGACY_PBKDF2_ITERATIONS
+	if (
+		typeof iterations !== 'number' ||
+		!Number.isInteger(iterations) ||
+		iterations < MIN_PBKDF2_ITERATIONS ||
+		iterations > MAX_PBKDF2_ITERATIONS
+	) {
+		throw new Error(
+			`Invalid or unsafe PBKDF2 iteration count: ${iterations}. Maximum allowed is ${MAX_PBKDF2_ITERATIONS}.`
+		)
+	}
+
 	const ivBytes = base64ToUint8Array(payload.iv)
 	const saltBytes = base64ToUint8Array(payload.salt)
 	const encryptedBytes = base64ToUint8Array(payload.encryptedData)
 
-	const key = await deriveKey(password, saltBytes)
+	const key = await deriveKey(password, saltBytes, iterations)
 	const iv = uint8ArrayToArrayBuffer(ivBytes)
 	const encrypted = uint8ArrayToArrayBuffer(encryptedBytes)
 
