@@ -7,7 +7,18 @@
 
 import * as bip39 from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
+import { AMADEUS_SEED_BYTE_LENGTH } from './constants'
+import { deriveChildSKMultiple, deriveMasterSK, skToBytes } from './eip2333'
 import { toBase58 } from './encoding'
+
+/**
+ * Amadeus HD derivation path (EIP-2333 BLS12-381), all hardened:
+ * `m/12381'/36969'/0'/0'/0'`. 12381 is the BLS purpose (EIP-2334); 36969 is
+ * the Amadeus SLIP-0044 coin type. This is the standard shared with the hub,
+ * Prime Hub and cli-wallet, so a mnemonic resolves to the same account across
+ * every Amadeus wallet.
+ */
+const AMADEUS_BLS_HD_PATH = [12381, 36969, 0, 0, 0]
 
 /**
  * Generate a new 12-word BIP39 mnemonic
@@ -41,8 +52,13 @@ export function validateMnemonic(mnemonic: string): boolean {
 
 /**
  * Derive an Amadeus seed (base58-encoded 64 bytes) from a BIP39 mnemonic.
- * Uses BIP39 seed derivation (PBKDF2 with SHA-512) which produces a 64-byte seed,
- * matching the Amadeus SDK's expected seed length.
+ *
+ * Uses the standard Amadeus HD derivation: the BIP39 seed is run through
+ * EIP-2333 BLS12-381 key derivation along `m/12381'/36969'/0'/0'/0'` to get
+ * the 32-byte BLS secret key. That key is then embedded little-endian into the
+ * low 32 bytes of the returned 64-byte Amadeus seed, so the SDK's
+ * {@link reduce512To256LE} recovers the exact same secret key — making the
+ * derived account byte-identical to the hub, Prime Hub and cli-wallet.
  *
  * @param mnemonic - BIP39 mnemonic phrase
  * @returns Base58-encoded 64-byte seed
@@ -53,8 +69,15 @@ export function validateMnemonic(mnemonic: string): boolean {
  * ```
  */
 export function mnemonicToSeedBase58(mnemonic: string): string {
-	const seed = bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase())
-	return toBase58(seed)
+	const bip39Seed = bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase())
+	const masterSK = deriveMasterSK(new Uint8Array(bip39Seed))
+	const skBigEndian = skToBytes(deriveChildSKMultiple(masterSK, AMADEUS_BLS_HD_PATH))
+
+	// reduce512To256LE reads the seed little-endian, so storing sk little-endian
+	// in the low 32 bytes (rest zero) round-trips back to the same sk.
+	const seed64 = new Uint8Array(AMADEUS_SEED_BYTE_LENGTH)
+	for (let i = 0; i < 32; i++) seed64[i] = skBigEndian[31 - i]
+	return toBase58(seed64)
 }
 
 /**
