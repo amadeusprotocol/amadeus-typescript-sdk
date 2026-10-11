@@ -8,6 +8,7 @@
 import * as bip39 from '@scure/bip39'
 import { wordlist } from '@scure/bip39/wordlists/english.js'
 import { AMADEUS_SEED_BYTE_LENGTH } from './constants'
+import { derivePublicKeyFromSeedBase58 } from './crypto'
 import { deriveChildSKMultiple, deriveMasterSK, skToBytes } from './eip2333'
 import { toBase58 } from './encoding'
 
@@ -78,6 +79,68 @@ export function mnemonicToSeedBase58(mnemonic: string): string {
 	const seed64 = new Uint8Array(AMADEUS_SEED_BYTE_LENGTH)
 	for (let i = 0; i < 32; i++) seed64[i] = skBigEndian[31 - i]
 	return toBase58(seed64)
+}
+
+/**
+ * The pre-1.4.0 Amadeus derivation: the raw 64-byte BIP39 seed is used directly
+ * as the Amadeus seed (reduced mod the BLS order at sign time). Kept ONLY so
+ * {@link mnemonicToCandidateKeypairs} can recognise wallets created by older
+ * extension/app builds. Do not use for new wallets — it is non-standard and
+ * does not match the hub / Prime Hub / cli-wallet.
+ */
+function legacyMnemonicToSeedBase58(mnemonic: string): string {
+	return toBase58(new Uint8Array(bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase())))
+}
+
+/** An HD derivation scheme a mnemonic can resolve under. */
+export type HdDerivation = 'eip2333' | 'legacy'
+
+/**
+ * A candidate account a mnemonic resolves to under one derivation scheme.
+ * `seed` is a vault-compatible base58 64-byte seed (no vault format change);
+ * `publicKey` is the base58 account address it opens.
+ */
+export interface MnemonicCandidate {
+	derivation: HdDerivation
+	seed: string
+	publicKey: string
+}
+
+/**
+ * Derive every account a mnemonic could belong to, so an importer can open the
+ * one that actually has history instead of stranding the user on an empty
+ * address.
+ *
+ * Returns the standard `eip2333` candidate first (the derivation every Amadeus
+ * signer now uses — hub, Prime Hub, cli-wallet, and the wallet since the HD-path
+ * fix) and the `legacy` candidate second (wallets created by pre-fix extension /
+ * app builds). On import, derive both, check each `publicKey` for on-chain or
+ * Prime activity, and open the one with history; if both have history let the
+ * user choose; if neither does, prefer the first (standard) candidate.
+ *
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @returns Candidates, standard derivation first
+ *
+ * @example
+ * ```ts
+ * const [standard, legacy] = mnemonicToCandidateKeypairs(mnemonic)
+ * ```
+ */
+export function mnemonicToCandidateKeypairs(mnemonic: string): MnemonicCandidate[] {
+	const eip2333Seed = mnemonicToSeedBase58(mnemonic)
+	const legacySeed = legacyMnemonicToSeedBase58(mnemonic)
+	return [
+		{
+			derivation: 'eip2333',
+			seed: eip2333Seed,
+			publicKey: derivePublicKeyFromSeedBase58(eip2333Seed)
+		},
+		{
+			derivation: 'legacy',
+			seed: legacySeed,
+			publicKey: derivePublicKeyFromSeedBase58(legacySeed)
+		}
+	]
 }
 
 /**

@@ -135,6 +135,33 @@ export function derivePublicKeyFromSeedBase58(base58Seed: string): string {
 	return toBase58(publicKey)
 }
 
+/**
+ * Wrap a raw 32-byte BLS secret key into a vault-compatible base58 64-byte
+ * Amadeus seed. Lets a wallet import a raw key — e.g. an EIP-2333 key exported
+ * from a hub / Google account (`m/12381'/36969'/0'/0'/0'`), which is a 32-byte
+ * big-endian scalar — without any vault format change.
+ *
+ * The key is embedded little-endian in the low 32 bytes so {@link reduce512To256LE}
+ * recovers it exactly; the seed therefore signs as that key.
+ *
+ * @param secretKey - 32-byte BLS secret key (big-endian)
+ * @returns Base58-encoded 64-byte Amadeus seed
+ * @throws Error if the key is not exactly 32 bytes
+ *
+ * @example
+ * ```ts
+ * const seed = secretKeyToSeedBase58(fromBase58(exportedKey))
+ * ```
+ */
+export function secretKeyToSeedBase58(secretKey: Uint8Array): string {
+	if (!(secretKey instanceof Uint8Array) || secretKey.length !== 32) {
+		throw new Error('Expected a 32-byte secret key')
+	}
+	const seed64 = new Uint8Array(AMADEUS_SEED_BYTE_LENGTH)
+	for (let i = 0; i < 32; i++) seed64[i] = secretKey[31 - i]
+	return toBase58(seed64)
+}
+
 // ============================================================================
 // KEY GENERATION
 // ============================================================================

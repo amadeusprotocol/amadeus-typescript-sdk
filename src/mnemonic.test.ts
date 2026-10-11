@@ -2,10 +2,10 @@ import { bls12_381 as bls } from '@noble/curves/bls12-381'
 import * as bip39 from '@scure/bip39'
 import { describe, expect, it } from 'vitest'
 
-import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
-import { toBase58 } from './encoding'
+import { deriveSkAndSeed64FromBase58Seed, getPublicKey, secretKeyToSeedBase58 } from './crypto'
+import { fromBase58, toBase58 } from './encoding'
 import { deriveChildSK, deriveChildSKMultiple, deriveMasterSK, skToBytes } from './eip2333'
-import { mnemonicToSeedBase58, validateMnemonic } from './mnemonic'
+import { mnemonicToCandidateKeypairs, mnemonicToSeedBase58, validateMnemonic } from './mnemonic'
 
 const hex = (s: string) => Uint8Array.from((s.match(/../g) ?? []).map((b) => parseInt(b, 16)))
 const toHex = (u: Uint8Array) => Buffer.from(u).toString('hex')
@@ -86,5 +86,67 @@ describe('mnemonicToSeedBase58', () => {
 		const seedB58 = mnemonicToSeedBase58(MNEMONIC)
 		const { seed64 } = deriveSkAndSeed64FromBase58Seed(seedB58)
 		expect(toBase58(seed64)).toBe(seedB58)
+	})
+})
+
+describe('mnemonicToCandidateKeypairs', () => {
+	const MNEMONIC =
+		'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+
+	it('returns the standard (eip2333) candidate first, legacy second', () => {
+		const [a, b] = mnemonicToCandidateKeypairs(MNEMONIC)
+		expect(a.derivation).toBe('eip2333')
+		expect(b.derivation).toBe('legacy')
+	})
+
+	it('standard candidate matches the hub / EIP-2333 account', () => {
+		const [std] = mnemonicToCandidateKeypairs(MNEMONIC)
+		expect(std.seed).toBe(mnemonicToSeedBase58(MNEMONIC))
+		expect(toHex(fromBase58(std.publicKey))).toBe(
+			'b598b45e8c846e57bd6b220726db54af982cf66d04e65537a84a7d62e67b3aebc3a3d9b28b5a524790b32fdaaa0fe9ba'
+		)
+	})
+
+	it('legacy candidate reproduces the pre-fix (raw BIP39 seed) account', () => {
+		const [, legacy] = mnemonicToCandidateKeypairs(MNEMONIC)
+		const bip39Seed = new Uint8Array(bip39.mnemonicToSeedSync(MNEMONIC))
+		expect(legacy.seed).toBe(toBase58(bip39Seed))
+		expect(toHex(fromBase58(legacy.publicKey))).toBe(toHex(getPublicKey(bip39Seed)))
+	})
+
+	it('the two candidates are different accounts (the whole point)', () => {
+		const [std, legacy] = mnemonicToCandidateKeypairs(MNEMONIC)
+		expect(std.publicKey).not.toBe(legacy.publicKey)
+		expect(std.seed).not.toBe(legacy.seed)
+	})
+
+	it('both candidate seeds are vault-compatible 64-byte base58', () => {
+		for (const c of mnemonicToCandidateKeypairs(MNEMONIC)) {
+			expect(fromBase58(c.seed).length).toBe(64)
+		}
+	})
+})
+
+describe('secretKeyToSeedBase58 (raw 32-byte key import)', () => {
+	const MNEMONIC =
+		'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+
+	it('imports a raw 32-byte BLS key to the account it signs as', () => {
+		// A hub / Google export is the raw EIP-2333 secret key (32-byte big-endian).
+		const sk = skToBytes(
+			deriveChildSKMultiple(
+				deriveMasterSK(new Uint8Array(bip39.mnemonicToSeedSync(MNEMONIC))),
+				[12381, 36969, 0, 0, 0]
+			)
+		)
+		const seed = secretKeyToSeedBase58(sk)
+		const { seed64 } = deriveSkAndSeed64FromBase58Seed(seed)
+		const [std] = mnemonicToCandidateKeypairs(MNEMONIC)
+		expect(toBase58(getPublicKey(seed64))).toBe(std.publicKey)
+	})
+
+	it('rejects a key that is not 32 bytes', () => {
+		expect(() => secretKeyToSeedBase58(new Uint8Array(31))).toThrow()
+		expect(() => secretKeyToSeedBase58(new Uint8Array(64))).toThrow()
 	})
 })
