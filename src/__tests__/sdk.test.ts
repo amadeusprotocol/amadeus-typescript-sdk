@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import { AmadeusSDK } from '../sdk'
 import { SDK_VERSION } from '../constants'
@@ -28,6 +29,13 @@ describe('AmadeusSDK', () => {
 		const version = AmadeusSDK.getVersion()
 
 		expect(version).toBe(SDK_VERSION)
+	})
+
+	it('SDK_VERSION matches package.json', () => {
+		const packageJson = JSON.parse(
+			readFileSync(new URL('../../package.json', import.meta.url), 'utf8')
+		)
+		expect(SDK_VERSION).toBe(packageJson.version)
 	})
 
 	it('updates base URL', () => {

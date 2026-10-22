@@ -5,6 +5,137 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-10-22
+
+### Added
+
+- **Dual-derivation phrase import** (`src/import-derivation.ts`), moved here from
+  the extension and mobile wallets so they share one implementation:
+  - **`resolveMnemonicImport(mnemonic, probeActivity)`** — derives both
+    candidates, probes each address and returns a `ResolvedMnemonicImport`
+    (`candidates`, `chosen`, `needsChoice`, `reason`). It opens one account only
+    when the answer is unambiguous: `single-active` (one has history, the other
+    is confirmed empty) or `none-active` (both confirmed empty, so the standard
+    account). `both-active` and `check-failed` (any probe unknown or throwing)
+    set `needsChoice` and leave `chosen` as `null`. Candidates are listed
+    standard first. The probe is injected, so callers can test or replace it.
+  - **`addressHasActivity(apiBaseUrl, address, timeoutMs?)`** — the default
+    probe. It checks `wallet/balance_all` (includes PRIME) and
+    `chain/tx_by_filter` on `arg0` and `signer`, so a funded-then-emptied
+    account still counts. Any history returns `'active'`. Otherwise an HTTP
+    error, network error, error payload, missing list or timeout returns
+    `'unknown'`, never `'inactive'`. It never throws. Requests go to
+    `${apiBaseUrl}/wallet/...` and `${apiBaseUrl}/chain/...`, keeping any path
+    prefix of a custom RPC URL. Each uses its own `AmadeusClient`, so they run
+    in parallel without cancelling each other, and each request, body read
+    included, is aborted after `ACTIVITY_PROBE_TIMEOUT_MS` (8 s) by default.
+  - Types `AddressActivity`, `CandidateWithActivity`, `ImportResolutionReason`
+    and `ResolvedMnemonicImport`.
+- **`normalizeMnemonic(mnemonic)`** — the canonical trimmed, lowercased,
+  single-spaced form of a phrase, so wallets store and compare phrases the same
+  way the SDK derives them.
+- **`derivationForSeed(mnemonic, seed)`** — returns `'eip2333'` or `'legacy'` for
+  the derivation of `mnemonic` that produced a stored `seed`, or `null` (also
+  for a malformed phrase; it never throws). Use it for accounts saved before
+  their derivation was recorded.
+- **`resolveCandidateForAddress(mnemonic, address)`** — returns the
+  `MnemonicCandidate` (`eip2333` or `legacy`) whose `publicKey` equals `address`,
+  or `null` if neither derivation opens it. It trims the address and throws on a
+  phrase that fails the BIP39 wordlist or checksum check. Use it whenever the
+  expected address is known, e.g. before signing an API token as a specific
+  account.
+
+### Changed
+
+- `validateMnemonic`, `mnemonicToSeedBase58` and `mnemonicToCandidateKeypairs`
+  now collapse runs of whitespace inside the phrase (e.g. a pasted phrase with
+  double spaces or line breaks). `validateMnemonic` used to reject such input,
+  and the derive functions could silently derive a different key from it. The
+  wallets always validated first, so no existing account changes; single-spaced
+  phrases derive exactly the same keys as before.
+
+### Fixed
+
+- **`SDK_VERSION`** was stuck at `'1.2.0'` through 1.3.0 to 1.5.0, so
+  `AmadeusSDK.getVersion()` and the `X-Client-Type` header reported the wrong
+  version. It now matches `package.json`, and a test fails if they drift apart.
+
+### Documentation
+
+- `mnemonicToCandidateKeypairs` now states that it does not validate the
+  mnemonic. Its behaviour is unchanged: call `validateMnemonic` first, or use
+  `resolveCandidateForAddress`.
+
+## [1.5.0] - 2026-10-11
+
+### Added
+
+- **`mnemonicToCandidateKeypairs(mnemonic)`** — derives both accounts a phrase
+  can open: the standard `eip2333` candidate first, and the `legacy` (pre-1.4.0,
+  raw BIP39 seed) candidate second. Each is a `MnemonicCandidate`
+  (`{ derivation, seed, publicKey }`) with a vault-compatible 64-byte base58
+  seed. Importers use it to open the account that has history instead of
+  stranding users on an empty address. New `HdDerivation` and
+  `MnemonicCandidate` types.
+- **`secretKeyToSeedBase58(secretKey)`** — wraps a raw 32-byte big-endian BLS
+  secret key (e.g. an EIP-2333 key exported from the hub or a Google account)
+  into a 64-byte Amadeus seed that signs as that key. No vault format change.
+
+## [1.4.0] - 2026-10-07
+
+### BREAKING: `mnemonicToSeedBase58` derives a different account
+
+`mnemonicToSeedBase58(mnemonic)` keeps its name and signature but now returns a
+**different seed, and therefore a different address**, for the same phrase.
+
+- **Before (≤ 1.3.0, "legacy")** — the raw 64-byte BIP39 seed was used directly
+  as the Amadeus seed.
+- **Now (≥ 1.4.0, "eip2333")** — the BIP39 seed goes through EIP-2333 BLS12-381
+  key derivation along `m/12381'/36969'/0'/0'/0'`. The 32-byte secret key is
+  embedded little-endian in the low 32 bytes of the returned 64-byte seed. This
+  matches the hub, Prime Hub and cli-wallet.
+
+Impact: a wallet that restores a phrase with 1.4.0+ opens a different address
+than one created or restored with ≤ 1.3.0. Seeds already stored in a vault are
+unaffected, since only re-deriving from the phrase changes the result. Wallets
+that import phrases should derive both accounts with
+`mnemonicToCandidateKeypairs` (1.5.0+) and open the one in use, or use
+`resolveCandidateForAddress` (1.6.0+) when the expected address is known.
+
+### Added
+
+- Dependency-free EIP-2333 implementation (`src/eip2333.ts`), verified against
+  the official spec test vectors.
+
+### Changed
+
+- npm publishing uses OIDC trusted publishing (no token).
+
+## [1.3.0] - 2026-10-02
+
+### Added
+
+- **Network-aware transaction signing** — `signUnsigned`, `buildAndSignRaw` and
+  `signContractCall` take an optional `network`. Testnet signs under its own
+  domain separation tag (`..._TX_TESTNET_`), so a transaction signed for one
+  network cannot be replayed on another. Mainnet and custom networks keep the
+  original tag, and the default is mainnet, so existing callers are unaffected.
+- **`txDstForNetwork(network?)`** and the signing primitives (`buildUnsigned`,
+  `signUnsigned`, `buildAndSignRaw`, `buildUnsignedFromCall`,
+  `signContractCall`, `normalizeSignerSk`) are now exported from the package
+  entry point.
+- **`MetricsAPI`** — typed client for the separately deployed public activity
+  metrics service (`getDaily(start, end)`, UTC dates, end exclusive, at most 31
+  days). See `docs/PUBLIC-METRICS.md`.
+- **`chain.getMetricsBlock(height)`** — canonical rooted transaction evidence for
+  a block (`MetricsBlockResponse`). Timestamps are intentionally unavailable,
+  and node seen-time is exposed as optional metadata.
+
+### Changed
+
+- The publish workflow now publishes to npm automatically when a merge to `main`
+  changes the `package.json` version.
+
 ## [1.2.0] - 2026-07-31
 
 ### Added
