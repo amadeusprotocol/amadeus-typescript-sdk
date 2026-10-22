@@ -50,7 +50,7 @@ function concat(...arrs: Uint8Array[]): Uint8Array {
 
 // The spec re-hashes the salt until the reduced scalar is non-zero.
 function hkdfModR(ikm: Uint8Array, keyInfo: Uint8Array = new Uint8Array(0)): bigint {
-	let salt = new TextEncoder().encode('BLS-SIG-KEYGEN-SALT-')
+	let salt: Uint8Array = new TextEncoder().encode('BLS-SIG-KEYGEN-SALT-')
 	let sk = 0n
 	while (sk === 0n) {
 		salt = sha256(salt)
