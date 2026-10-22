@@ -22,6 +22,35 @@ bun add @amadeus-protocol/sdk
 
 > **ESM-only**: this package is published as pure ESM (`"type": "module"`). Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler (Vite, webpack, esbuild, Metro). For CommonJS consumers, run via [`tsx`](https://github.com/privatenumber/tsx). See [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting.md) for the `1.0.x` `ERR_MODULE_NOT_FOUND` issue and upgrade path.
 
+## What's New in 1.6.0
+
+- **Dual-derivation import** — `resolveMnemonicImport()` derives both accounts a phrase can
+  open, checks each one for history with `addressHasActivity()`, and tells you which to open
+  or that the user must choose. See
+  [Importing a phrase into a wallet](#importing-a-phrase-into-a-wallet)
+- **`resolveCandidateForAddress()`** — find the derivation of a phrase that opens a known address
+- **`derivationForSeed()`** — find which derivation produced a stored seed
+- `validateMnemonic()` and the derive functions now accept phrases with extra whitespace or
+  line breaks
+- `SDK_VERSION` now reports the real package version (it was stuck at `1.2.0`)
+
+## What's New in 1.5.0
+
+- **Two derivations per phrase** — since 1.4.0 the same recovery phrase can open two
+  different addresses, depending on which SDK version derived it. 1.5.0 adds
+  `mnemonicToCandidateKeypairs()` to derive both, so wallets can recover either. See
+  [Mnemonics and account derivation](#mnemonics-and-account-derivation)
+- **`secretKeyToSeedBase58()`** — import a raw 32-byte BLS key (e.g. a hub export)
+
+See the [CHANGELOG](./CHANGELOG.md) for full release history.
+
+## Breaking in 1.4.0: `mnemonicToSeedBase58` returns a different account
+
+`mnemonicToSeedBase58()` kept its name but switched from the raw BIP39 seed (`legacy`) to the
+EIP-2333 path `m/12381'/36969'/0'/0'/0'` (`eip2333`), the standard shared with the hub, Prime Hub
+and cli-wallet. Restoring a phrase with 1.4.0+ opens a **different address** than 1.3.0 and earlier
+did. Seeds already stored in a vault are unaffected. See the [CHANGELOG](./CHANGELOG.md).
+
 ## What's New in 1.2.0
 
 - **Staking (`LockupVault`)** — read an account's staking position in one call:
@@ -403,7 +432,7 @@ const atomic = toAtomicAma(1.5) // Returns 1500000000
 const ama = fromAtomicAma(1500000000) // Returns 1.5
 ```
 
-### Mnemonics (BIP39)
+### Mnemonics and account derivation
 
 ```typescript
 import { generateMnemonic, validateMnemonic, mnemonicToSeedBase58 } from '@amadeus-protocol/sdk'
@@ -417,6 +446,72 @@ if (validateMnemonic(mnemonic)) {
 	const seedBase58 = mnemonicToSeedBase58(mnemonic)
 }
 ```
+
+One phrase can open **two different accounts**, depending on how it was derived:
+
+| Derivation | How the seed is derived                                       | Produced by                                                              |
+| ---------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `eip2333`  | EIP-2333 BLS12-381 along `m/12381'/36969'/0'/0'/0'`           | `mnemonicToSeedBase58` in SDK 1.4.0+, hub, Prime Hub, cli-wallet         |
+| `legacy`   | The raw 64-byte BIP39 seed, used directly as the Amadeus seed | `mnemonicToSeedBase58` in SDK 1.3.0 and earlier, and wallets built on it |
+
+`mnemonicToSeedBase58` always returns the `eip2333` seed. To recover a wallet that may have
+been created with the legacy derivation, derive both candidates:
+
+```typescript
+import { mnemonicToCandidateKeypairs, validateMnemonic } from '@amadeus-protocol/sdk'
+
+// Candidates do not check the checksum, so validate first: a typo still derives two
+// plausible-looking but wrong accounts.
+if (!validateMnemonic(mnemonic)) throw new Error('Invalid recovery phrase')
+
+const [standard, legacy] = mnemonicToCandidateKeypairs(mnemonic)
+// standard.derivation === 'eip2333', legacy.derivation === 'legacy'
+// Each has { derivation, seed, publicKey }. To pick one on import, see resolveMnemonicImport below.
+```
+
+When you already know the address (for example, copied from the wallet), resolve the
+matching candidate directly. It trims the address and throws on an invalid phrase:
+
+```typescript
+import { TransactionBuilder, resolveCandidateForAddress } from '@amadeus-protocol/sdk'
+
+const candidate = resolveCandidateForAddress(mnemonic, walletAddress)
+if (!candidate) throw new Error('This phrase does not open that address')
+
+// candidate.seed signs as walletAddress, whichever derivation created it
+const builder = new TransactionBuilder(candidate.seed)
+```
+
+#### Importing a phrase into a wallet
+
+`resolveMnemonicImport` probes both candidates and opens one only when one has history and the
+other is confirmed empty, or both are confirmed empty (standard wins). Otherwise (both have
+history, or any probe is unknown) it reports that the user must choose. Always show the other
+address too. `addressHasActivity` is the default probe: it checks current balances (including
+PRIME) and transactions sent or received, and answers `'unknown'` rather than `'inactive'` when
+a request fails or times out (8 s by default). Pass the same API base URL the rest of your app
+uses; any path prefix is kept.
+
+```typescript
+import { addressHasActivity, resolveMnemonicImport, validateMnemonic } from '@amadeus-protocol/sdk'
+
+if (!validateMnemonic(mnemonic)) throw new Error('Invalid recovery phrase')
+
+const apiBaseUrl = 'https://mainnet-rpc.ama.one/api'
+const result = await resolveMnemonicImport(mnemonic, (address) =>
+	addressHasActivity(apiBaseUrl, address)
+)
+
+if (result.needsChoice) {
+	// reason is 'both-active' or 'check-failed': let the user pick from result.candidates
+} else {
+	// reason is 'single-active' or 'none-active': open result.chosen, still showing the other
+}
+```
+
+To label an account that was saved with its phrase but without a recorded derivation, use
+`derivationForSeed(mnemonic, seed)`. It returns `'eip2333'`, `'legacy'` or `null` (also for
+a malformed phrase, so it never throws).
 
 ### Encoding Utilities
 
@@ -475,7 +570,14 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 
 - `generateMnemonic(): string` - Generate a 12-word BIP39 mnemonic
 - `validateMnemonic(mnemonic: string): boolean` - Validate a BIP39 mnemonic
-- `mnemonicToSeedBase58(mnemonic: string): string` - Derive a Base58 seed from a mnemonic
+- `normalizeMnemonic(mnemonic: string): string` - Trim, lowercase and collapse whitespace; the form to store and compare phrases in
+- `mnemonicToSeedBase58(mnemonic: string): string` - Derive the standard (`eip2333`) Base58 seed from a mnemonic. Returned the `legacy` seed before 1.4.0
+- `mnemonicToCandidateKeypairs(mnemonic: string): MnemonicCandidate[]` - Derive both candidates, `eip2333` first and `legacy` second. Does not validate the mnemonic
+- `resolveCandidateForAddress(mnemonic: string, address: string): MnemonicCandidate | null` - Validate the mnemonic and return the candidate that opens `address`, or `null`
+- `derivationForSeed(mnemonic: string, seed: string): HdDerivation | null` - Which derivation of the mnemonic produced `seed`, or `null`
+- `resolveMnemonicImport(mnemonic: string, probeActivity: (address: string) => Promise<AddressActivity>): Promise<ResolvedMnemonicImport>` - Derive both candidates, probe each for history and pick the account to open, or report that the user must choose
+- `addressHasActivity(apiBaseUrl: string, address: string, timeoutMs?: number): Promise<AddressActivity>` - `'active'`, `'inactive'` or `'unknown'` from balances and transaction history. Never throws
+- `secretKeyToSeedBase58(secretKey: Uint8Array): string` - Wrap a raw 32-byte BLS secret key into a 64-byte Base58 seed
 - `encodeVaultSecret`, `decodeVaultSecret`, `detectInputType` - Vault helpers
 
 ### Encoding
