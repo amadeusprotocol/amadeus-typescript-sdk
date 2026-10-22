@@ -22,6 +22,19 @@ import { toBase58 } from './encoding'
 const AMADEUS_BLS_HD_PATH = [12381, 36969, 0, 0, 0]
 
 /**
+ * Canonical form of a typed or pasted phrase: trimmed, lowercased, single-spaced.
+ * scure/bip39 splits on single spaces, so store and compare phrases in this form.
+ *
+ * @example
+ * ```ts
+ * normalizeMnemonic('  Abandon\n abandon ... ABOUT ') // 'abandon abandon ... about'
+ * ```
+ */
+export function normalizeMnemonic(mnemonic: string): string {
+	return mnemonic.trim().toLowerCase().split(/\s+/).join(' ')
+}
+
+/**
  * Generate a new 12-word BIP39 mnemonic
  *
  * @returns 12-word mnemonic phrase
@@ -48,7 +61,7 @@ export function generateMnemonic(): string {
  * ```
  */
 export function validateMnemonic(mnemonic: string): boolean {
-	return bip39.validateMnemonic(mnemonic.trim().toLowerCase(), wordlist)
+	return bip39.validateMnemonic(normalizeMnemonic(mnemonic), wordlist)
 }
 
 /**
@@ -61,6 +74,10 @@ export function validateMnemonic(mnemonic: string): boolean {
  * {@link reduce512To256LE} recovers the exact same secret key — making the
  * derived account byte-identical to the hub, Prime Hub and cli-wallet.
  *
+ * Changed in 1.4.0: earlier versions returned the raw 64-byte BIP39 seed, which
+ * opens a different account for the same phrase. Use
+ * {@link mnemonicToCandidateKeypairs} to recover wallets created that way.
+ *
  * @param mnemonic - BIP39 mnemonic phrase
  * @returns Base58-encoded 64-byte seed
  *
@@ -70,7 +87,7 @@ export function validateMnemonic(mnemonic: string): boolean {
  * ```
  */
 export function mnemonicToSeedBase58(mnemonic: string): string {
-	const bip39Seed = bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase())
+	const bip39Seed = bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic))
 	const masterSK = deriveMasterSK(new Uint8Array(bip39Seed))
 	const skBigEndian = skToBytes(deriveChildSKMultiple(masterSK, AMADEUS_BLS_HD_PATH))
 
@@ -89,7 +106,7 @@ export function mnemonicToSeedBase58(mnemonic: string): string {
  * does not match the hub / Prime Hub / cli-wallet.
  */
 function legacyMnemonicToSeedBase58(mnemonic: string): string {
-	return toBase58(new Uint8Array(bip39.mnemonicToSeedSync(mnemonic.trim().toLowerCase())))
+	return toBase58(new Uint8Array(bip39.mnemonicToSeedSync(normalizeMnemonic(mnemonic))))
 }
 
 /** An HD derivation scheme a mnemonic can resolve under. */
@@ -114,9 +131,13 @@ export interface MnemonicCandidate {
  * Returns the standard `eip2333` candidate first (the derivation every Amadeus
  * signer now uses — hub, Prime Hub, cli-wallet, and the wallet since the HD-path
  * fix) and the `legacy` candidate second (wallets created by pre-fix extension /
- * app builds). On import, derive both, check each `publicKey` for on-chain or
- * Prime activity, and open the one with history; if both have history let the
- * user choose; if neither does, prefer the first (standard) candidate.
+ * app builds). To choose which candidate to open on import, use
+ * {@link resolveMnemonicImport}.
+ *
+ * This does NOT verify the BIP39 checksum or wordlist: a phrase with a typo
+ * still derives two plausible-looking but wrong accounts. Call
+ * {@link validateMnemonic} first, or use {@link resolveCandidateForAddress}
+ * when the expected address is known.
  *
  * @param mnemonic - BIP39 mnemonic phrase
  * @returns Candidates, standard derivation first
@@ -141,6 +162,72 @@ export function mnemonicToCandidateKeypairs(mnemonic: string): MnemonicCandidate
 			publicKey: derivePublicKeyFromSeedBase58(legacySeed)
 		}
 	]
+}
+
+/**
+ * Find which derivation of a mnemonic opens a known address.
+ *
+ * Use this when the wallet address is known (e.g. copied from the wallet UI)
+ * and you need the matching seed, for instance to sign an API token as that
+ * account. The phrase is validated before deriving; the address is trimmed and
+ * compared exactly, since base58 is case-sensitive.
+ *
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @param address - Base58 public key the mnemonic is expected to open
+ * @returns The matching candidate, or `null` if neither derivation opens `address`
+ * @throws Error if the mnemonic fails the BIP39 wordlist or checksum check
+ *
+ * @example
+ * ```ts
+ * const candidate = resolveCandidateForAddress(mnemonic, walletAddress)
+ * if (!candidate) throw new Error('This phrase does not open that address')
+ * console.log(candidate.derivation) // 'eip2333' or 'legacy'
+ * ```
+ */
+export function resolveCandidateForAddress(
+	mnemonic: string,
+	address: string
+): MnemonicCandidate | null {
+	if (!validateMnemonic(mnemonic)) {
+		throw new Error(
+			'Invalid mnemonic: not a valid BIP39 phrase (unknown word, wrong word count or bad checksum)'
+		)
+	}
+	const target = address.trim()
+	return (
+		mnemonicToCandidateKeypairs(mnemonic).find((candidate) => candidate.publicKey === target) ??
+		null
+	)
+}
+
+/**
+ * Find which derivation of a mnemonic produced a stored seed.
+ *
+ * Use this for accounts saved with both a seed and its phrase but without a
+ * recorded derivation, e.g. to tell a user that the phrase opens a different
+ * address in other wallets. The seed is compared exactly. The phrase is not
+ * validated: a malformed phrase (e.g. a wrong word count) cannot have derived a
+ * stored seed, so it returns `null` instead of throwing.
+ *
+ * @param mnemonic - BIP39 mnemonic phrase
+ * @param seed - Base58 64-byte seed, as stored in the vault
+ * @returns `'eip2333'` or `'legacy'`, or `null` if neither derivation produces `seed`
+ *   or the phrase cannot be derived
+ *
+ * @example
+ * ```ts
+ * const derivation = derivationForSeed(account.mnemonic, account.seed)
+ * if (derivation === 'legacy') showLegacyNotice()
+ * ```
+ */
+export function derivationForSeed(mnemonic: string, seed: string): HdDerivation | null {
+	let candidates: MnemonicCandidate[]
+	try {
+		candidates = mnemonicToCandidateKeypairs(mnemonic)
+	} catch {
+		return null
+	}
+	return candidates.find((candidate) => candidate.seed === seed)?.derivation ?? null
 }
 
 /**
