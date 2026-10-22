@@ -5,7 +5,15 @@ import { describe, expect, it } from 'vitest'
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey, secretKeyToSeedBase58 } from './crypto'
 import { fromBase58, toBase58 } from './encoding'
 import { deriveChildSK, deriveChildSKMultiple, deriveMasterSK, skToBytes } from './eip2333'
-import { mnemonicToCandidateKeypairs, mnemonicToSeedBase58, validateMnemonic } from './mnemonic'
+import * as sdk from './index'
+import {
+	derivationForSeed,
+	mnemonicToCandidateKeypairs,
+	mnemonicToSeedBase58,
+	normalizeMnemonic,
+	resolveCandidateForAddress,
+	validateMnemonic
+} from './mnemonic'
 
 const hex = (s: string) => Uint8Array.from((s.match(/../g) ?? []).map((b) => parseInt(b, 16)))
 const toHex = (u: Uint8Array) => Buffer.from(u).toString('hex')
@@ -17,15 +25,13 @@ describe('EIP-2333 derivation (official test vectors)', () => {
 	const cases = [
 		{
 			seed: 'c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04',
-			master:
-				6083874454709270928345386274498605044986640685124978867557563392430687146096n,
+			master: 6083874454709270928345386274498605044986640685124978867557563392430687146096n,
 			index: 0,
 			child: 20397789859736650942317412262472558107875392172444076792671091975210932703118n
 		},
 		{
 			seed: 'd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3',
-			master:
-				19022158461524446591288038168518313374041767046816487870552872741050760015818n,
+			master: 19022158461524446591288038168518313374041767046816487870552872741050760015818n,
 			index: 42,
 			child: 31372231650479070279774297061823572166496564838472787488249775572789064611981n
 		}
@@ -47,7 +53,13 @@ describe('mnemonicToSeedBase58', () => {
 	it('is deterministic and normalizes case/whitespace', () => {
 		const a = mnemonicToSeedBase58(MNEMONIC)
 		expect(mnemonicToSeedBase58(`  ${MNEMONIC.toUpperCase()}  `)).toBe(a)
+		const multiSpaced = MNEMONIC.split(' ').join(' \t\n ')
+		expect(mnemonicToSeedBase58(multiSpaced)).toBe(a)
+		expect(mnemonicToCandidateKeypairs(multiSpaced)).toEqual(
+			mnemonicToCandidateKeypairs(MNEMONIC)
+		)
 		expect(validateMnemonic(MNEMONIC)).toBe(true)
+		expect(validateMnemonic(multiSpaced)).toBe(true)
 	})
 
 	it('derives the SDK seed so it recovers the EIP-2333 BLS key (hub / Prime Hub / cli-wallet standard)', () => {
@@ -148,5 +160,108 @@ describe('secretKeyToSeedBase58 (raw 32-byte key import)', () => {
 	it('rejects a key that is not 32 bytes', () => {
 		expect(() => secretKeyToSeedBase58(new Uint8Array(31))).toThrow()
 		expect(() => secretKeyToSeedBase58(new Uint8Array(64))).toThrow()
+	})
+})
+
+describe('resolveCandidateForAddress', () => {
+	const MNEMONIC =
+		'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+	const [STANDARD, LEGACY] = mnemonicToCandidateKeypairs(MNEMONIC)
+
+	it('is exported from the package entry point', () => {
+		expect(sdk.resolveCandidateForAddress).toBe(resolveCandidateForAddress)
+	})
+
+	it('returns the eip2333 candidate for the standard address', () => {
+		expect(resolveCandidateForAddress(MNEMONIC, STANDARD.publicKey)).toEqual(STANDARD)
+	})
+
+	it('returns the legacy candidate for a pre-1.4.0 address', () => {
+		expect(resolveCandidateForAddress(MNEMONIC, LEGACY.publicKey)).toEqual(LEGACY)
+	})
+
+	it('normalizes phrase case/whitespace and trims the address', () => {
+		const messyPhrase = `  ${MNEMONIC.toUpperCase().split(' ').join(' \t\n ')}  `
+		expect(resolveCandidateForAddress(messyPhrase, `  ${LEGACY.publicKey}\n`)).toEqual(LEGACY)
+	})
+
+	it('returns null when neither derivation opens the address', () => {
+		const otherAddress = mnemonicToCandidateKeypairs(
+			'legal winner thank year wave sausage worth useful legal winner thank yellow'
+		)[0].publicKey
+		expect(resolveCandidateForAddress(MNEMONIC, otherAddress)).toBeNull()
+		expect(resolveCandidateForAddress(MNEMONIC, '')).toBeNull()
+	})
+
+	it('does not match an address with different case (base58 is case-sensitive)', () => {
+		expect(resolveCandidateForAddress(MNEMONIC, STANDARD.publicKey.toLowerCase())).toBeNull()
+	})
+
+	it('throws on a bad checksum', () => {
+		const badChecksum =
+			'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon'
+		expect(() => resolveCandidateForAddress(badChecksum, STANDARD.publicKey)).toThrow(
+			/Invalid mnemonic/
+		)
+	})
+
+	it('throws on a word outside the BIP39 wordlist', () => {
+		const typo = MNEMONIC.replace(/about$/, 'abuot')
+		expect(() => resolveCandidateForAddress(typo, STANDARD.publicKey)).toThrow(
+			/Invalid mnemonic/
+		)
+	})
+
+	it('throws on a wrong word count', () => {
+		expect(() => resolveCandidateForAddress('abandon about', STANDARD.publicKey)).toThrow(
+			/Invalid mnemonic/
+		)
+	})
+})
+
+describe('normalizeMnemonic', () => {
+	it('is exported from the package entry point', () => {
+		expect(sdk.normalizeMnemonic).toBe(normalizeMnemonic)
+	})
+
+	it('trims, lowercases and collapses whitespace runs', () => {
+		expect(normalizeMnemonic('  Abandon\t ABANDON\n\nabout  ')).toBe('abandon abandon about')
+	})
+
+	it('leaves a canonical phrase unchanged', () => {
+		const phrase = 'abandon abandon about'
+		expect(normalizeMnemonic(phrase)).toBe(phrase)
+	})
+})
+
+describe('derivationForSeed', () => {
+	const MNEMONIC =
+		'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+	const [STANDARD, LEGACY] = mnemonicToCandidateKeypairs(MNEMONIC)
+
+	it('is exported from the package entry point', () => {
+		expect(sdk.derivationForSeed).toBe(derivationForSeed)
+	})
+
+	it('identifies the derivation that produced each candidate seed', () => {
+		expect(derivationForSeed(MNEMONIC, STANDARD.seed)).toBe('eip2333')
+		expect(derivationForSeed(MNEMONIC, LEGACY.seed)).toBe('legacy')
+	})
+
+	it('normalizes phrase case/whitespace', () => {
+		const messyPhrase = `  ${MNEMONIC.toUpperCase().split(' ').join(' \t\n ')}  `
+		expect(derivationForSeed(messyPhrase, LEGACY.seed)).toBe('legacy')
+	})
+
+	it('returns null for a seed the phrase does not produce', () => {
+		const otherSeed = mnemonicToCandidateKeypairs(
+			'legal winner thank year wave sausage worth useful legal winner thank yellow'
+		)[0].seed
+		expect(derivationForSeed(MNEMONIC, otherSeed)).toBeNull()
+		expect(derivationForSeed(MNEMONIC, '')).toBeNull()
+	})
+
+	it('returns null instead of throwing for a malformed phrase', () => {
+		expect(derivationForSeed('abandon about', STANDARD.seed)).toBeNull()
 	})
 })
