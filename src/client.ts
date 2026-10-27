@@ -25,7 +25,7 @@ function isValidUrl(url: string): boolean {
 
 export class AmadeusClient {
 	private config: Required<AmadeusSDKConfig>
-	private abortController: AbortController | null = null
+	private inFlight = new Set<AbortController>()
 
 	/**
 	 * Create a new AmadeusClient instance
@@ -67,10 +67,9 @@ export class AmadeusClient {
 		validate(NonEmptyStringSchema, endpoint)
 
 		const url = this.buildUrl(endpoint, params)
-		const response = await this.request(url, {
-			method: 'GET'
-		})
-		return this.handleResponse(response) as Promise<T>
+		return this.request(url, { method: 'GET' }, (response) =>
+			this.handleResponse(response)
+		) as Promise<T>
 	}
 
 	/**
@@ -86,14 +85,17 @@ export class AmadeusClient {
 		const url = this.buildUrl(endpoint)
 		const { body, contentType } = this.prepareBody(data)
 
-		const response = await this.request(url, {
-			method: 'POST',
-			body,
-			headers: {
-				'Content-Type': contentType
-			}
-		})
-		return this.handleResponse(response) as Promise<T>
+		return this.request(
+			url,
+			{
+				method: 'POST',
+				body,
+				headers: {
+					'Content-Type': contentType
+				}
+			},
+			(response) => this.handleResponse(response)
+		) as Promise<T>
 	}
 
 	/**
@@ -114,23 +116,24 @@ export class AmadeusClient {
 		const url = this.buildUrl(endpoint)
 		const { body, contentType } = this.prepareBody(data)
 
-		const response = await this.request(url, {
-			method: 'POST',
-			body,
-			headers: {
-				'Content-Type': contentType
+		return this.request(
+			url,
+			{
+				method: 'POST',
+				body,
+				headers: {
+					'Content-Type': contentType
+				}
+			},
+			async (response) => {
+				if (!response.ok) {
+					// handleResponse throws for !ok; the throw below guards against that ever changing.
+					await this.handleResponse(response)
+					throw new AmadeusSDKError(`HTTP ${response.status}`, response.status)
+				}
+				return new Uint8Array(await response.arrayBuffer())
 			}
-		})
-
-		if (!response.ok) {
-			// Reuse the JSON/text error decoding, which throws for !ok. The
-			// explicit throw after it keeps a future change to handleResponse
-			// from turning an error response into a bogus empty body.
-			await this.handleResponse(response)
-			throw new AmadeusSDKError(`HTTP ${response.status}`, response.status)
-		}
-
-		return new Uint8Array(await response.arrayBuffer())
+		)
 	}
 
 	/**
@@ -190,36 +193,52 @@ export class AmadeusClient {
 	}
 
 	/**
-	 * Make HTTP request with timeout
+	 * Make an HTTP request and read its body; `cancel()` aborts it until the body is read
 	 */
-	private async request(url: string, options: RequestInit): Promise<Response> {
-		// Cancel previous request if any
-		if (this.abortController) {
-			this.abortController.abort()
+	private async request<T>(
+		url: string,
+		options: RequestInit,
+		read: (response: Response) => Promise<T>
+	): Promise<T> {
+		// One controller per request: concurrent calls on a shared client must not abort each other.
+		const controller = new AbortController()
+		this.inFlight.add(controller)
+		try {
+			return await read(await this.send(url, options, controller))
+		} finally {
+			this.inFlight.delete(controller)
 		}
+	}
 
-		this.abortController = new AbortController()
+	/**
+	 * Send an HTTP request, timing out if headers do not arrive in time
+	 */
+	private async send(
+		url: string,
+		options: RequestInit,
+		controller: AbortController
+	): Promise<Response> {
+		const abortState = { timedOut: false }
 		const timeoutId = setTimeout(() => {
-			this.abortController?.abort()
+			abortState.timedOut = true
+			controller.abort()
 		}, this.config.timeout)
 
 		try {
-			const response = await fetch(url, {
+			return await fetch(url, {
 				...options,
 				headers: {
 					...this.config.headers,
 					...options.headers
 				},
-				signal: this.abortController.signal
+				signal: controller.signal
 			})
-
-			clearTimeout(timeoutId)
-			return response
 		} catch (error) {
-			clearTimeout(timeoutId)
 			if (error instanceof Error) {
 				if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-					throw new AmadeusSDKError(`Request timeout after ${this.config.timeout}ms`, 408)
+					throw abortState.timedOut
+						? new AmadeusSDKError(`Request timeout after ${this.config.timeout}ms`, 408)
+						: new AmadeusSDKError('Request cancelled', 0)
 				}
 				throw new AmadeusSDKError(
 					`Request failed: ${error.message}`,
@@ -232,6 +251,8 @@ export class AmadeusClient {
 			throw new AmadeusSDKError(`Request failed: ${String(error)}`, 0, {
 				error: String(error)
 			})
+		} finally {
+			clearTimeout(timeoutId)
 		}
 	}
 
@@ -356,12 +377,10 @@ export class AmadeusClient {
 	}
 
 	/**
-	 * Cancel ongoing requests
+	 * Cancel every in-flight request on this client
 	 */
 	cancel(): void {
-		if (this.abortController) {
-			this.abortController.abort()
-			this.abortController = null
-		}
+		for (const controller of this.inFlight) controller.abort()
+		this.inFlight.clear()
 	}
 }

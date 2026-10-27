@@ -8,6 +8,7 @@
 
 import { uint8ArrayToBase64 } from './encoding'
 import { decodeContractState, decodeContractStatePage } from './serialization'
+import type { ContractStatePage } from './serialization'
 import { AmadeusSDKError } from './types'
 
 /**
@@ -15,6 +16,9 @@ import { AmadeusSDKError } from './types'
  *
  * Useful for serializing decoded contract state for Redux or other stores
  * that require JSON-serializable values.
+ *
+ * Decodes ONE `get_prefix` page and drops its cursor, so a prefix with more than
+ * 1,000 rows comes back truncated. Use `readAllPrefixPages` to read every page.
  *
  * @param bytes - VecPack-encoded bytes (Uint8Array or ArrayBuffer)
  * @returns Array of [key, value] tuples as Base64 strings
@@ -46,6 +50,10 @@ const DEFAULT_MAX_PREFIX_PAGES = 50
 /**
  * Path for one page of a prefix read: the endpoint, plus `?cursor=` after the first page.
  *
+ * The default endpoint is relative to an `/api` base and meant for string concatenation
+ * (`base + prefixPagePath(cursor)`). `AmadeusClient` resolves paths against the origin,
+ * so pass `'/api/contract/get_prefix'` there.
+ *
  * @param cursor - Cursor from the previous page, or `null` for the first page
  * @param endpoint - Prefix endpoint path (default `/contract/get_prefix`)
  * @returns Endpoint path with the cursor query string
@@ -62,8 +70,9 @@ export function prefixPagePath(cursor: string | null, endpoint = '/contract/get_
 /**
  * Read every page of a `get_prefix` query, following the cursor to the last page.
  *
- * Throws rather than truncating: on an unrecognised page, a repeated cursor, or
- * more than `maxPages` pages.
+ * Throws an `AmadeusSDKError` rather than truncating: on a page that does not
+ * decode, a repeated cursor, or more than `maxPages` pages. Errors from
+ * `fetchPage` propagate unchanged.
  *
  * @param fetchPage - Fetches the raw body of one page; `null` asks for the first
  * @param options - Optional page limit
@@ -93,8 +102,9 @@ export async function readAllPrefixPages(
 		if (pagesRead >= maxPages) {
 			throw new AmadeusSDKError(`get_prefix returned more than ${maxPages} pages`)
 		}
-		const page = decodeContractStatePage(await fetchPage(cursor))
-		entries.push(...page.entries)
+		const page = decodePrefixPage(await fetchPage(cursor))
+		// Spreading a large legacy single-page body into push() overflows the stack.
+		for (const entry of page.entries) entries.push(entry)
 		if (page.cursor === null) return
 		if (seenCursors.has(page.cursor)) {
 			throw new AmadeusSDKError(`get_prefix repeated cursor ${page.cursor}`)
@@ -105,6 +115,15 @@ export async function readAllPrefixPages(
 
 	await readFrom(null, 0)
 	return entries
+}
+
+function decodePrefixPage(body: Uint8Array | ArrayBuffer): ContractStatePage {
+	try {
+		return decodeContractStatePage(body)
+	} catch (error) {
+		const reason = error instanceof Error ? error.message : String(error)
+		throw new AmadeusSDKError(`get_prefix page did not decode: ${reason}`)
+	}
 }
 
 /**

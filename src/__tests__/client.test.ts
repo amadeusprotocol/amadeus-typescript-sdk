@@ -223,6 +223,40 @@ describe('AmadeusClient', () => {
 
 			expect(() => client.cancel()).not.toThrow()
 		})
+
+		it('runs concurrent requests without one aborting another', async () => {
+			const signals: AbortSignal[] = []
+			vi.mocked(fetch).mockImplementation(async (_url, init) => {
+				signals.push(init?.signal as AbortSignal)
+				await new Promise((resolve) => setTimeout(resolve, 5))
+				if (init?.signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+				return new Response('{"ok":1}', { headers: { 'content-type': 'application/json' } })
+			})
+			const client = new AmadeusClient({ baseUrl: 'https://example.com' })
+
+			const results = await Promise.all([client.get('/api/one'), client.get('/api/two')])
+
+			expect(results).toEqual([{ ok: 1 }, { ok: 1 }])
+			expect(signals.some((signal) => signal.aborted)).toBe(false)
+		})
+
+		it('cancel() aborts every in-flight request as cancelled, not timed out', async () => {
+			vi.mocked(fetch).mockImplementation(
+				(_url, init) =>
+					new Promise((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () =>
+							reject(new DOMException('Aborted', 'AbortError'))
+						)
+					})
+			)
+			const client = new AmadeusClient({ baseUrl: 'https://example.com' })
+
+			const pending = [client.get('/api/one'), client.get('/api/two')]
+			client.cancel()
+
+			for (const request of pending)
+				await expect(request).rejects.toThrow('Request cancelled')
+		})
 	})
 })
 

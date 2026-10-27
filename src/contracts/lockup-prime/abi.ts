@@ -298,7 +298,7 @@ export const LOCKUP_PRIME_ABI = {
 					endpoint: '/api/contract/get_prefix',
 					prefix: 'bic:lockup_prime:vault:{account_binary}:',
 					description:
-						'Get all vaults for an account. Returns array of [key, value] tuples.'
+						'Get all vaults for an account. Paged { rows, cursor }: follow cursor via readAllPrefixPages.'
 				}
 			},
 			{

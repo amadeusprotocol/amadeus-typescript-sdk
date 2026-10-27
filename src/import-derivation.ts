@@ -49,7 +49,7 @@ async function probe(
 	timeoutMs: number
 ): Promise<ProbeResult> {
 	let timer: ReturnType<typeof setTimeout> | undefined
-	// AmadeusClient aborts its previous in-flight request, so each probe needs its own client.
+	// cancel() aborts every request on a client, so each probe needs its own client.
 	let client: AmadeusClient | undefined
 	// The client's own timeout stops once headers arrive; cancel() also aborts the body read.
 	const deadline = new Promise<never>((_resolve, reject) => {
