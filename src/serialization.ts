@@ -67,26 +67,71 @@ export function decode(bytes: Uint8Array | number[]): DecodedValue {
 	return value
 }
 
+/** One page of a contract state prefix read. */
+export interface ContractStatePage {
+	/** `[key, value]` pairs, keys with the queried prefix stripped */
+	entries: Array<[Uint8Array, Uint8Array]>
+	/** Cursor for the next page, or `null` on the last page */
+	cursor: string | null
+}
+
 /**
- * Decode VecPack-encoded contract state into key-value pairs
+ * Decode one `get_prefix` response page.
  *
- * Contract state prefix queries return a VecPack-encoded map where both
- * keys and values are binary (Uint8Array). This convenience function decodes
- * the binary data and returns the entries as an array of tuples.
+ * The node answers `{ rows, cursor }`: `rows` maps key suffix to value (an empty
+ * list when nothing matched) and `cursor` is the Base58 key to resume after, or
+ * nil on the last page. Pre-paging nodes answered with the bare row map, or an
+ * empty list; both still decode, with a `null` cursor. Any other shape throws, so
+ * an unreadable answer never passes for an empty one.
  *
- * A prefix that matches nothing comes back as an empty LIST rather than an empty
- * map, and an empty body is possible too — both decode to no entries. Anything
- * else non-map is an error.
- *
- * @param bytes - VecPack-encoded bytes (Uint8Array or ArrayBuffer)
- * @returns Array of [key, value] tuples
- * @throws Error if the data is not a valid VecPack map or entries are not binary
+ * @param bytes - VecPack-encoded response body (Uint8Array or ArrayBuffer)
+ * @returns The page's entries and its cursor
+ * @throws Error if the body is not a recognised prefix response
  *
  * @example
  * ```ts
- * const response = await fetch('/contract/state/prefix?prefix=...')
- * const buffer = await response.arrayBuffer()
- * const entries = decodeContractState(buffer)
+ * const { entries, cursor } = decodeContractStatePage(await response.arrayBuffer())
+ * ```
+ */
+export function decodeContractStatePage(bytes: Uint8Array | ArrayBuffer): ContractStatePage {
+	const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
+	if (data.length === 0) return { entries: [], cursor: null }
+
+	const decoded = decode(data)
+
+	// The node encodes an empty row set as an empty list, not an empty map.
+	if (Array.isArray(decoded) && decoded.length === 0) return { entries: [], cursor: null }
+
+	if (!(decoded instanceof Map)) {
+		throw new Error(`Expected MAP type, got ${describeTerm(decoded)}`)
+	}
+
+	const envelope = readPageEnvelope(decoded)
+	if (!envelope) return { entries: binaryEntries(decoded), cursor: null }
+
+	const { rows, cursor } = envelope
+	if (Array.isArray(rows) && rows.length === 0) return { entries: [], cursor: readCursor(cursor) }
+	if (!(rows instanceof Map)) {
+		throw new Error(`Expected MAP or empty LIST for page rows, got ${describeTerm(rows)}`)
+	}
+	return { entries: binaryEntries(rows), cursor: readCursor(cursor) }
+}
+
+/**
+ * Decode a contract state prefix response into `[key, value]` pairs.
+ *
+ * Reads both the paged `{ rows, cursor }` response and the pre-paging bare map,
+ * but only ONE page: use `readAllPrefixPages` (or `sdk.contract.getPrefixEntries`)
+ * to follow the cursor.
+ *
+ * @param bytes - VecPack-encoded bytes (Uint8Array or ArrayBuffer)
+ * @returns Array of [key, value] tuples
+ * @throws Error if the body is not a recognised prefix response or entries are not binary
+ *
+ * @example
+ * ```ts
+ * const response = await fetch('/api/contract/get_prefix', { method: 'POST', body: prefix })
+ * const entries = decodeContractState(await response.arrayBuffer())
  * for (const [key, value] of entries) {
  *   console.log(key, value)
  * }
@@ -95,27 +140,46 @@ export function decode(bytes: Uint8Array | number[]): DecodedValue {
 export function decodeContractState(
 	bytes: Uint8Array | ArrayBuffer
 ): Array<[Uint8Array, Uint8Array]> {
-	const data = bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes
-	if (data.length === 0) return []
+	return decodeContractStatePage(bytes).entries
+}
 
-	const decoded = decode(data)
+const textDecoder = new TextDecoder()
 
-	// No matches: the node answers with an empty list, not an empty map.
-	if (Array.isArray(decoded) && decoded.length === 0) return []
+function readPageEnvelope(
+	map: Map<DecodedValue, DecodedValue>
+): { rows: DecodedValue; cursor: DecodedValue } | null {
+	if (map.size !== 2) return null
+	const named = new Map(
+		[...map.entries()].map(([key, value]) => [
+			key instanceof Uint8Array ? textDecoder.decode(key) : null,
+			value
+		])
+	)
+	if (!named.has('rows') || !named.has('cursor')) return null
+	return { rows: named.get('rows') as DecodedValue, cursor: named.get('cursor') as DecodedValue }
+}
 
-	if (!(decoded instanceof Map)) {
-		throw new Error(`Expected MAP type, got ${typeof decoded}`)
-	}
+function readCursor(cursor: DecodedValue): string | null {
+	if (cursor === null) return null
+	if (cursor instanceof Uint8Array && cursor.length > 0) return textDecoder.decode(cursor)
+	throw new Error(`Expected binary or nil page cursor, got ${describeTerm(cursor)}`)
+}
 
-	const result: Array<[Uint8Array, Uint8Array]> = []
-	for (const [key, value] of decoded.entries()) {
+function binaryEntries(map: Map<DecodedValue, DecodedValue>): Array<[Uint8Array, Uint8Array]> {
+	return [...map.entries()].map(([key, value]) => {
 		if (!(key instanceof Uint8Array) || !(value instanceof Uint8Array)) {
 			throw new Error('Expected Uint8Array for key and value')
 		}
-		result.push([key, value])
-	}
+		return [key, value]
+	})
+}
 
-	return result
+function describeTerm(term: DecodedValue): string {
+	if (term === null) return 'nil'
+	if (Array.isArray(term)) return `LIST(${term.length})`
+	if (term instanceof Map) return `MAP(${term.size})`
+	if (term instanceof Uint8Array) return 'BYTES'
+	return typeof term
 }
 
 /*
