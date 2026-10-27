@@ -22,6 +22,14 @@ bun add @amadeus-protocol/sdk
 
 > **ESM-only**: this package is published as pure ESM (`"type": "module"`). Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler (Vite, webpack, esbuild, Metro). For CommonJS consumers, run via [`tsx`](https://github.com/privatenumber/tsx). See [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting.md) for the `1.0.x` `ERR_MODULE_NOT_FOUND` issue and upgrade path.
 
+## What's New in 1.7.0
+
+- **Paged `get_prefix`** — since node `78b5e9c` the endpoint answers `{rows, cursor}` pages.
+  `decodeContractState()` reads both the paged and the old shape, and
+  `contract.getPrefixEntries()` (so every `staking.*` read) follows the cursor. Making your own
+  HTTP calls? Use `readAllPrefixPages()` with `prefixPagePath()`
+- Concurrent requests on one `AmadeusClient` no longer abort each other
+
 ## What's New in 1.6.0
 
 - **Dual-derivation import** — `resolveMnemonicImport()` derives both accounts a phrase can

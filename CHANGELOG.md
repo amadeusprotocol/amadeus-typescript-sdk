@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-27
+
+### Added
+
+- **`decodeContractStatePage(bytes)`** returns `{ entries, cursor }` for one
+  `get_prefix` page. It reads the paged answer (`{rows, cursor}`, node `78b5e9c`
+  onwards) and the older bare row map or empty list. Any other shape throws.
+- **`readAllPrefixPages(fetchPage, { maxPages })`** follows `?cursor=` until the
+  last page. It throws past `maxPages` (default 50) or on a repeated cursor,
+  never returning a cut-off list.
+- **`prefixPagePath(cursor, endpoint?)`** builds the page URL path.
+
+### Fixed
+
+- **Staked balances missing.** `decodeContractState` read the node's paged
+  answer as two bad rows and threw, so `staking.*` reads failed and wallets showed
+  no stake. It now decodes both shapes, and `contract.getPrefixEntries` reads
+  every page.
+- **Parallel requests cancelled each other.** `AmadeusClient` aborted the request
+  in flight whenever a new one started and reported it as a timeout. Each request
+  now has its own controller; `cancel()` aborts all of them.
+
 ## [1.6.0] - 2026-10-22
 
 ### Added

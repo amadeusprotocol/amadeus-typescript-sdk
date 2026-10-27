@@ -7,7 +7,7 @@
 /**
  * SDK version. Must match `version` in package.json (enforced by a test).
  */
-export const SDK_VERSION = '1.6.0'
+export const SDK_VERSION = '1.7.0'
 
 /**
  * Byte length of an Amadeus public key (BLS12-381 public key)
