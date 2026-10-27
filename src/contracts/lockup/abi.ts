@@ -65,9 +65,10 @@ export const LOCKUP_ABI = {
 				},
 				query: {
 					method: 'POST',
-					endpoint: '/contract/get_prefix',
+					endpoint: '/api/contract/get_prefix',
 					prefix: 'bic:lockup:vault:{account_binary}:',
-					description: 'Get all vaults for an account'
+					description:
+						'Get all vaults for an account. Paged { rows, cursor }: follow cursor via readAllPrefixPages.'
 				}
 			}
 		]

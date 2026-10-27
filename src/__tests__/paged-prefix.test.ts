@@ -12,6 +12,7 @@ import {
 import { fromBase58 } from '../encoding'
 import { AmadeusSDK } from '../sdk'
 import { decodeContractState, decodeContractStatePage, encode } from '../serialization'
+import { AmadeusSDKError } from '../types'
 import type { SerializableValue } from '../types'
 
 const LEONARDO = '75GWnWZGbSCU6QtpUjZ4QuKcz3j4tgF4fDzzTzJJ64UoWp3VL74jM1nQHofPhFuuYC'
@@ -185,10 +186,18 @@ describe('readAllPrefixPages', () => {
 		expect(fetchPage).toHaveBeenCalledTimes(2)
 	})
 
-	it('propagates a page that does not decode', async () => {
-		await expect(readAllPrefixPages(async () => encode([1n]))).rejects.toThrow(
-			/Expected MAP type/
+	it('reports a page that does not decode as an AmadeusSDKError', async () => {
+		const reading = readAllPrefixPages(async () => encode([1n]))
+		await expect(reading).rejects.toThrow(AmadeusSDKError)
+		await expect(reading).rejects.toThrow(/Expected MAP type/)
+	})
+
+	it('reads a legacy single page too large to spread into push()', async () => {
+		const rowCount = 200_000
+		const legacy = encode(
+			new Map(Array.from({ length: rowCount }, (_, index) => [enc(String(index)), enc('v')]))
 		)
+		expect((await readAllPrefixPages(async () => legacy)).length).toBe(rowCount)
 	})
 
 	it('rejects a non-positive maxPages', async () => {
