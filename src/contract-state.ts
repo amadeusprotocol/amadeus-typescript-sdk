@@ -7,7 +7,8 @@
  */
 
 import { uint8ArrayToBase64 } from './encoding'
-import { decodeContractState } from './serialization'
+import { decodeContractState, decodeContractStatePage } from './serialization'
+import { AmadeusSDKError } from './types'
 
 /**
  * Decode VecPack-encoded contract state and convert keys/values to Base64 strings.
@@ -32,6 +33,78 @@ export function decodeContractStateToBase64(
 	return pairs
 		.filter(([key, value]) => key.length > 0 && value.length > 0)
 		.map(([key, value]) => [uint8ArrayToBase64(key), uint8ArrayToBase64(value)])
+}
+
+/** Options for `readAllPrefixPages`. */
+export interface ReadAllPrefixPagesOptions {
+	/** Most pages to fetch before giving up (default 50, i.e. ~50,000 rows) */
+	maxPages?: number
+}
+
+const DEFAULT_MAX_PREFIX_PAGES = 50
+
+/**
+ * Path for one page of a prefix read: the endpoint, plus `?cursor=` after the first page.
+ *
+ * @param cursor - Cursor from the previous page, or `null` for the first page
+ * @param endpoint - Prefix endpoint path (default `/contract/get_prefix`)
+ * @returns Endpoint path with the cursor query string
+ *
+ * @example
+ * ```ts
+ * prefixPagePath('4vJ9...', '/api/contract/get_prefix') // '/api/contract/get_prefix?cursor=4vJ9...'
+ * ```
+ */
+export function prefixPagePath(cursor: string | null, endpoint = '/contract/get_prefix'): string {
+	return endpoint + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : '')
+}
+
+/**
+ * Read every page of a `get_prefix` query, following the cursor to the last page.
+ *
+ * Throws rather than truncating: on an unrecognised page, a repeated cursor, or
+ * more than `maxPages` pages.
+ *
+ * @param fetchPage - Fetches the raw body of one page; `null` asks for the first
+ * @param options - Optional page limit
+ * @returns Every `[key, value]` pair, page after page
+ *
+ * @example
+ * ```ts
+ * const entries = await readAllPrefixPages(async (cursor) => {
+ *   const response = await fetch(base + prefixPagePath(cursor), { method: 'POST', body: prefix })
+ *   return response.arrayBuffer()
+ * })
+ * ```
+ */
+export async function readAllPrefixPages(
+	fetchPage: (cursor: string | null) => Promise<Uint8Array | ArrayBuffer>,
+	options?: ReadAllPrefixPagesOptions
+): Promise<Array<[Uint8Array, Uint8Array]>> {
+	const maxPages = options?.maxPages ?? DEFAULT_MAX_PREFIX_PAGES
+	if (!Number.isInteger(maxPages) || maxPages < 1) {
+		throw new AmadeusSDKError(`maxPages must be a positive integer, got ${maxPages}`)
+	}
+
+	const entries: Array<[Uint8Array, Uint8Array]> = []
+	const seenCursors = new Set<string>()
+
+	const readFrom = async (cursor: string | null, pagesRead: number): Promise<void> => {
+		if (pagesRead >= maxPages) {
+			throw new AmadeusSDKError(`get_prefix returned more than ${maxPages} pages`)
+		}
+		const page = decodeContractStatePage(await fetchPage(cursor))
+		entries.push(...page.entries)
+		if (page.cursor === null) return
+		if (seenCursors.has(page.cursor)) {
+			throw new AmadeusSDKError(`get_prefix repeated cursor ${page.cursor}`)
+		}
+		seenCursors.add(page.cursor)
+		await readFrom(page.cursor, pagesRead + 1)
+	}
+
+	await readFrom(null, 0)
+	return entries
 }
 
 /**

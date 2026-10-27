@@ -672,8 +672,13 @@ position.vaults // per-vault detail (tier, amount, APY, validator, maturity)
 
 Pass `{ currentEpoch }` across several calls so they resolve against one epoch and skip the extra
 round trip. The building blocks are exported too, for callers that own their own HTTP layer:
-`buildOwnerVaultsKeyPrefix`, `decodeContractState`, `parseLockupVaultEntries`,
-`summarizeLockupVaults`, `epochFromHeight`, `flatToAma`.
+`buildOwnerVaultsKeyPrefix`, `readAllPrefixPages`, `prefixPagePath`, `decodeContractStatePage`,
+`decodeContractState`, `parseLockupVaultEntries`, `summarizeLockupVaults`, `epochFromHeight`,
+`flatToAma`.
+
+`get_prefix` answers in pages of `{ rows, cursor }` (at most 1,000 rows each); fetch the next page
+with `?cursor=<cursor>` until the cursor is `null`. `readAllPrefixPages(fetchPage)` does that loop,
+and throws on a shape it does not recognise instead of reading it as empty.
 
 Amounts are atomic `bigint` (`*Flat`) so nothing is lost to float rounding — real positions exceed
 `2^53` atomic units. Use `flatToAma()` or the pre-computed `number` fields.

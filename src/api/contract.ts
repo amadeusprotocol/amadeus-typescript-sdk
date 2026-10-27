@@ -16,7 +16,8 @@ import type {
 import { AmadeusSDKError } from '../types'
 import { BytecodeSchema, ContractKeySchema } from '../schemas'
 import { validate } from '../validation'
-import { decodeContractState, encode } from '../serialization'
+import { encode } from '../serialization'
+import { prefixPagePath, readAllPrefixPages } from '../contract-state'
 
 export class ContractAPI {
 	constructor(private client: AmadeusClient) {}
@@ -76,9 +77,9 @@ export class ContractAPI {
 	/**
 	 * Get contract data by key prefix as decoded `[key, value]` byte pairs.
 	 *
-	 * `/api/contract/get_prefix` answers with a VecPack binary map, which
-	 * `getPrefix()` cannot represent (it parses the body as text). Use this when
-	 * the values are themselves binary records — contract vaults, for example.
+	 * `/api/contract/get_prefix` answers with VecPack binary pages of
+	 * `{ rows, cursor }` (at most 1,000 rows / 1 MiB each); this follows the
+	 * cursor and returns every row. `getPrefix()` cannot read the binary body.
 	 *
 	 * Keys come back with the queried prefix stripped: querying
 	 * `bic:lockup_vault:vault:{owner}:` yields keys that are just the vault index.
@@ -87,6 +88,8 @@ export class ContractAPI {
 	 *   prefixes are raw byte strings (`bic:lockup_vault:vault:`), not Base58 —
 	 *   anything containing a public key must be passed as bytes.
 	 * @returns Promise resolving to `[key, value]` pairs of raw bytes
+	 * @throws {AmadeusSDKError} On an empty prefix, an HTTP error (the node rejects
+	 *   prefixes under 8 bytes) or a page that does not decode
 	 *
 	 * @example
 	 * ```ts
@@ -100,9 +103,9 @@ export class ContractAPI {
 		if (prefix.length === 0) {
 			throw new AmadeusSDKError('Contract key prefix must not be empty')
 		}
-		const bytes = await this.client.postBinary('/api/contract/get_prefix', prefix)
-		if (bytes.length === 0) return []
-		return decodeContractState(bytes)
+		return readAllPrefixPages((cursor) =>
+			this.client.postBinary(prefixPagePath(cursor, '/api/contract/get_prefix'), prefix)
+		)
 	}
 
 	/**
