@@ -35,7 +35,8 @@ export const AMA_TOKEN_DECIMALS_MULTIPLIER = 10 ** AMA_TOKEN_DECIMALS
 export const MIN_TRANSFERABLE_AMOUNT = 1 / AMA_TOKEN_DECIMALS_MULTIPLIER
 
 /**
- * Flat network transfer fee in AMA for standard transfers
+ * Conservative AMA reserve to hold back for a standard transfer; not the charged fee.
+ * The chain locks 0.01 AMA per tx, charges actual usage and refunds the rest.
  */
 export const AMA_TRANSFER_FEE = 0.02
 
