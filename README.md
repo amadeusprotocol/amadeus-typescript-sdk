@@ -20,160 +20,170 @@ pnpm add @amadeus-protocol/sdk
 bun add @amadeus-protocol/sdk
 ```
 
-> **ESM-only**: this package is published as pure ESM (`"type": "module"`). Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler (Vite, webpack, esbuild, Metro). For CommonJS consumers, run via [`tsx`](https://github.com/privatenumber/tsx). See [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting.md) for the `1.0.x` `ERR_MODULE_NOT_FOUND` issue and upgrade path.
+> **ESM-only**: this package is published as pure ESM (`"type": "module"`), with no CommonJS
+> build. Use Node.js 20+ with `"type": "module"` in your `package.json`, or any modern bundler
+> (Vite, webpack, esbuild, Metro). In TypeScript, set `module`/`moduleResolution` to `NodeNext`
+> or `Bundler`. CommonJS projects can run scripts with [`tsx`](https://github.com/privatenumber/tsx).
+> On `1.0.x`, raw `node` fails with `ERR_MODULE_NOT_FOUND`: upgrade to `1.1.0` or later (see
+> [Troubleshooting](https://docs.ama.one/sdk/9.-troubleshooting)).
 
-## What's New in 1.7.0
+## What's New
 
-- **Paged `get_prefix`** — since node `78b5e9c` the endpoint answers `{rows, cursor}` pages.
-  `decodeContractState()` reads both the paged and the old shape, and
-  `contract.getPrefixEntries()` (so every `staking.*` read) follows the cursor. Making your own
-  HTTP calls? Use `readAllPrefixPages()` with `prefixPagePath()`
-- Concurrent requests on one `AmadeusClient` no longer abort each other
+### 1.7.0
 
-## What's New in 1.6.0
+- **Paged `get_prefix`**: since node `78b5e9c` the endpoint answers in `{ rows, cursor }` pages.
+  `contract.getPrefixEntries()` (and so the `staking.*` vault reads) follows the cursor, and
+  `decodeContractState()` reads both the paged and the old shape. Making your own HTTP calls?
+  Use `readAllPrefixPages()` with `prefixPagePath()`
+- **Concurrent requests** on one `AmadeusClient` no longer abort each other. Before 1.7.0 a new
+  request cancelled the one in flight and reported it as a timeout
 
-- **Dual-derivation import** — `resolveMnemonicImport()` derives both accounts a phrase can
-  open, checks each one for history with `addressHasActivity()`, and tells you which to open
-  or that the user must choose. See
-  [Importing a phrase into a wallet](#importing-a-phrase-into-a-wallet)
-- **`resolveCandidateForAddress()`** — find the derivation of a phrase that opens a known address
-- **`derivationForSeed()`** — find which derivation produced a stored seed
-- `validateMnemonic()` and the derive functions now accept phrases with extra whitespace or
-  line breaks
-- `SDK_VERSION` now reports the real package version (it was stuck at `1.2.0`)
+### 1.6.0
 
-## What's New in 1.5.0
+- **Dual-derivation import**: `resolveMnemonicImport()` derives both accounts a phrase can open,
+  checks each one for history with the probe you pass (usually `addressHasActivity()`), and tells
+  you which to open or that the user must choose. See [Importing a phrase into a wallet](#importing-a-phrase-into-a-wallet)
+- **`resolveCandidateForAddress()`** finds the derivation of a phrase that opens a known address
+- **`derivationForSeed()`** finds which derivation produced a stored seed
+- `validateMnemonic()` and the derive functions accept phrases with extra whitespace or line
+  breaks (`normalizeMnemonic()`)
+- `SDK_VERSION` reports the real package version (it was stuck at `1.2.0`)
 
-- **Two derivations per phrase** — since 1.4.0 the same recovery phrase can open two
-  different addresses, depending on which SDK version derived it. 1.5.0 adds
-  `mnemonicToCandidateKeypairs()` to derive both, so wallets can recover either. See
-  [Mnemonics and account derivation](#mnemonics-and-account-derivation)
-- **`secretKeyToSeedBase58()`** — import a raw 32-byte BLS key (e.g. a hub export)
+### 1.5.0
 
-See the [CHANGELOG](./CHANGELOG.md) for full release history.
+- **`mnemonicToCandidateKeypairs()`** derives both accounts a phrase can open (see 1.4.0), so
+  wallets can recover either. See [Mnemonics and account derivation](#mnemonics-and-account-derivation)
+- **`secretKeyToSeedBase58()`** imports a raw 32-byte BLS key (e.g. a hub export)
 
-## Breaking in 1.4.0: `mnemonicToSeedBase58` returns a different account
+### 1.4.0 (breaking): `mnemonicToSeedBase58` returns a different account
 
 `mnemonicToSeedBase58()` kept its name but switched from the raw BIP39 seed (`legacy`) to the
 EIP-2333 path `m/12381'/36969'/0'/0'/0'` (`eip2333`), the standard shared with the hub, Prime Hub
-and cli-wallet. Restoring a phrase with 1.4.0+ opens a **different address** than 1.3.0 and earlier
-did. Seeds already stored in a vault are unaffected. See the [CHANGELOG](./CHANGELOG.md).
+and cli-wallet. Restoring a phrase with 1.4.0+ opens a **different address** than 1.3.0 and
+earlier did. Seeds already stored in a vault are unaffected.
 
-## What's New in 1.2.0
+### 1.3.0
 
-- **Staking (`LockupVault`)** — read an account's staking position in one call:
-  `sdk.staking.getPosition(publicKey)` returns every vault plus the rolled-up totals
-  (total staked, accrued yield, stake-weighted APY, maturity/unlock state, stake per validator)
-- **`contract.getPrefixEntries()`** — prefix reads that return raw `[key, value]` byte pairs.
-  `/api/contract/get_prefix` answers with a VecPack _binary_ body, which `getPrefix()` mangles
-  by parsing it as text
-- **`client.postBinary()`** — POST returning raw bytes, for the binary endpoints
-- **`decodeContractState()` fix** — a prefix matching nothing comes back as an empty VecPack
-  _list_, not an empty map. It used to throw; it now decodes to `[]`. This is the common case
-  for any account that has never staked
-- **`ChainStats`** — added the fields the node actually returns: `total_locked`, `total_supply`,
-  `supply_computed_at_height`, and `validators` (with per-validator `commission_bps` and stake)
+- **Network-bound signing**: testnet signs under its own domain separation tag, so a transaction
+  signed for one network cannot be replayed on another. `signContractCall`, `buildAndSignRaw`
+  and `signUnsigned` take an optional `network`; see [Networks and testnet](#networks-and-testnet)
+- **`MetricsAPI`** for the separately deployed public activity metrics service, and
+  `chain.getMetricsBlock()`. See [docs/PUBLIC-METRICS.md](./docs/PUBLIC-METRICS.md)
 
-See the [CHANGELOG](./CHANGELOG.md) for full release history.
+### 1.2.0
 
-## What's New in 1.1.0
+- **Staking (`LockupVault`)**: `sdk.staking.getPosition(publicKey)` returns every vault plus the
+  rolled-up totals (total staked, accrued yield, stake-weighted APY, maturity and unlock state,
+  stake per validator)
+- **`contract.getPrefixEntries()`** returns raw `[key, value]` byte pairs. `/api/contract/get_prefix`
+  answers with a VecPack _binary_ body, which `getPrefix()` mangles by parsing it as text
+- **`client.postBinary()`**: POST returning raw bytes, for the binary endpoints
+- **`ChainStats`** gained the fields the node returns: `total_locked`, `total_supply`,
+  `supply_computed_at_height` and `validators` (per-validator `commission_bps` and stake)
 
-- **`contract.view()`** — read-only contract execution
-- **`chain.getByFilter()`** / **`chain.getKpi()`** — filtered tx queries + protocol KPIs
-- **`proof.getContractStateProof()`** — merkle proofs for contract state
-- **`submitAndWait(txPacked, { finalized: true })`** — wait for finality instead of confirmation
-- **NFT contract** — `NFT_ABI`, `buildNftTransfer/Mint/CreateCollection`, `TransactionBuilder.nftTransfer/nftMint/nftCreateCollection`
-- **ESM fix** — published `dist/*.js` now resolves correctly under raw `node` (the `1.0.x` `ERR_MODULE_NOT_FOUND` bug)
+### 1.1.2
 
-See the [CHANGELOG](./CHANGELOG.md) for full release history.
+- **Types match the node**: entry fields live under `entry.header` (there is no `entry.height`
+  or `entry.timestamp`), `ChainStats` has no `total_entries`/`total_transactions`, and richlist
+  entries are `{ pk, symbol, flat, float }`
+- The `submit()` and `submitAndWait()` types drop the `error` field they never carried: the client
+  strips `error: 'ok'` and throws on any other value, so a resolved call is `{ hash }` or
+  `{ hash, metadata, receipt }`
+
+### 1.1.0
+
+- **`contract.view()`**, **`chain.getByFilter()`**, **`chain.getKpi()`**,
+  **`proof.getContractStateProof()`** and **`submitAndWait(txPacked, { finalized: true })`**
+- **NFT contract**: `NFT_ABI`, `buildNftTransfer/Mint/CreateCollection`,
+  `TransactionBuilder.nftTransfer/nftMint/nftCreateCollection`
+- **ESM fix**: `dist/*.js` resolves under raw `node` (the `1.0.x` `ERR_MODULE_NOT_FOUND` bug)
+
+See the [CHANGELOG](./CHANGELOG.md) for the full release history, and the
+[migration guide](https://docs.ama.one/sdk/migration-guide) to upgrade from 1.0.x or 1.1.x.
 
 ## Features
 
 - **Canonical Serialization (VecPack)**: Deterministic encoding/decoding for cryptographic operations
-- **Cryptographic Operations**: BLS12-381 key generation, signing, and verification
-- **Password-Based Encryption**: Secure AES-GCM encryption with PBKDF2 key derivation for wallet data
-- **Transaction Building**: Create and sign Amadeus protocol transactions
-- **Token Conversions**: Convert between atomic units and human-readable amounts
-- **Encoding Utilities**: Base58 and Base64 encoding/decoding for addresses, keys, and binary data
-- **Staking**: Read LockupVault positions — totals, per-vault detail, and stake-weighted APY
-- **API Client**: Full-featured HTTP client for interacting with Amadeus nodes
+- **Cryptographic Operations**: BLS12-381 key generation and transaction signing
+- **Recovery Phrases**: BIP39 mnemonics with EIP-2333 derivation, plus recovery of legacy-derived accounts
+- **Password-Based Encryption**: AES-GCM encryption with PBKDF2 key derivation for wallet data
+- **Transaction Building**: Build and sign Coin, NFT, Lockup and LockupPrime calls, or any ABI
+- **Network-Bound Signing**: Mainnet and testnet signatures use different domains
+- **Staking**: Read LockupVault positions: totals, per-vault detail and stake-weighted APY
+- **API Client**: Typed HTTP client for Amadeus nodes
+- **Token Conversions, Encoding, Validation, Formatting and Explorer Links**
 - **Type Safety**: Complete TypeScript definitions for all APIs
-- **Zero Dependencies**: Uses native fetch (no axios or other HTTP libraries)
+- **No HTTP library**: Uses native `fetch` (no axios)
 
 ## Quick Start
-
-### Using the SDK
 
 ```typescript
 import { AmadeusSDK } from '@amadeus-protocol/sdk'
 
-// Initialize SDK (uses default node URL if not specified)
-const sdk = new AmadeusSDK({
-	baseUrl: 'https://mainnet-rpc.ama.one/api'
-})
+// Defaults to https://mainnet-rpc.ama.one/api
+const sdk = new AmadeusSDK()
 
-// Query chain
-const tip = await sdk.chain.getTip()
-console.log('Current height:', tip.entry.header.height)
+const { entry } = await sdk.chain.getTip()
+console.log('Current height:', entry.header.height)
 
-// Query wallet balance
-const balance = await sdk.wallet.getBalance('5Kd3N...', 'AMA')
-console.log('Balance:', balance.balance.float)
-
-// Submit transaction
-const result = await sdk.transaction.submit(txPacked)
+const { balance } = await sdk.wallet.getBalance('5Kd3N...', 'AMA')
+console.log('Balance:', balance.float, balance.symbol)
 ```
 
 ## Usage
 
 ### API Client
 
+Every response is the node's JSON with the `error: 'ok'` envelope removed. Any other `error`
+is thrown as an `AmadeusSDKError` (see [Error Handling](#error-handling)).
+
 ```typescript
 import { AmadeusSDK } from '@amadeus-protocol/sdk'
 
 const sdk = new AmadeusSDK({
 	baseUrl: 'https://mainnet-rpc.ama.one/api',
-	timeout: 30000 // Optional: custom timeout
+	timeout: 30000 // Optional, in milliseconds
 })
+const address = '5Kd3N...'
 
 // Chain API
-const stats = await sdk.chain.getStats()
-const tip = await sdk.chain.getTip()
-const entry = await sdk.chain.getByHash('5Kd3N...')
-const { txs, cursor } = await sdk.chain.getByFilter({ contract: 'Coin', function: 'transfer' })
+const { stats } = await sdk.chain.getStats()
+const { entry } = await sdk.chain.getTip()
+const { entries } = await sdk.chain.getByHeight(stats.rooted_height)
 const { kpi } = await sdk.chain.getKpi()
 
+// Transaction history: pass `cursor` back to read the next page
+const { txs, cursor } = await sdk.chain.getByFilter({ signer: address, limit: 10, sort: 'desc' })
+
 // Wallet API
-const balance = await sdk.wallet.getBalance('5Kd3N...', 'AMA')
-const allBalances = await sdk.wallet.getAllBalances('5Kd3N...')
+const { balance } = await sdk.wallet.getBalance(address, 'AMA')
+const { balances } = await sdk.wallet.getAllBalances(address) // [{ symbol, float, flat }]
 
 // Transaction API
-const result = await sdk.transaction.submit(txPacked)
-const confirmed = await sdk.transaction.submitAndWait(txPacked)
-const finalized = await sdk.transaction.submitAndWait(txPacked, { finalized: true })
-const tx = await sdk.transaction.get('5Kd3N...')
+const tx = await sdk.transaction.get(txs[0].hash)
+const { txs: entryTxs } = await sdk.transaction.getByEntry(tx.metadata.entry_hash)
 
 // Contract API
-const contractData = await sdk.contract.get(key)
-const richlist = await sdk.contract.getRichlist()
-const { success, result } = await sdk.contract.view({
-	contract: 'LockupPrime',
-	function: 'view_balance',
-	args: ['my_vault']
-})
+const { richlist } = await sdk.contract.getRichlist() // [{ pk, symbol, flat, float }]
 
 // Epoch API
-const scores = await sdk.epoch.getScore()
-const emission = await sdk.epoch.getEmissionAddress('5Kd3N...')
+const scores = await sdk.epoch.getAllScores() // [publicKey, score][]
+const { emission_address } = await sdk.epoch.getEmissionAddress(entry.header.signer)
 
 // Peer API
-const nodes = await sdk.peer.getNodes()
-const trainers = await sdk.peer.getTrainers()
+const { nodes } = await sdk.peer.getNodes()
+const { trainers } = await sdk.peer.getTrainers()
 
-// Proof API
-const validatorProof = await sdk.proof.getValidators(entryHash)
-const stateProof = await sdk.proof.getContractStateProof(stateKey)
+// Staking API
+const position = await sdk.staking.getPosition(address)
 ```
+
+`entry.header` holds `height`, `slot` and `signer`. `stats` holds `height`, `rooted_height`,
+`tx_pool_size`, `circulating`, `burned`, `total_locked`, `emission_for_epoch` and per-validator
+`validators[publicKey]`.
+
+`baseUrl` is used for its scheme and host only: endpoints are rooted at `/api`, so a path prefix
+such as `https://host/node1/api` is not kept.
 
 ### Key Generation
 
@@ -182,58 +192,55 @@ import { generateKeypair, derivePublicKeyFromSeedBase58 } from '@amadeus-protoco
 
 // Generate a new keypair
 const keypair = generateKeypair()
-console.log(keypair.publicKey) // Base58 public key
-console.log(keypair.privateKey) // Base58 private key (seed)
+console.log(keypair.publicKey) // Base58 public key (the address)
+console.log(keypair.privateKey) // Base58 64-byte seed
 
-// Derive public key from existing seed
+// Derive the public key from an existing seed
 const publicKey = derivePublicKeyFromSeedBase58(keypair.privateKey)
 ```
 
+To create an account from a recovery phrase, see
+[Mnemonics and account derivation](#mnemonics-and-account-derivation).
+
 ### Transaction Building
 
-#### Using TransactionBuilder Class (Recommended)
+`TransactionBuilder` and `createContract(...).connect(...)` sign for **mainnet**. To sign for
+testnet, see [Networks and testnet](#networks-and-testnet).
+
+On mainnet (node 1.6.5) the `Lockup`, `LockupPrime` and `Nft` built-in contracts are disabled: a
+call to them is included in an entry, but its receipt fails with `invalid_bic_action`. They run on
+testnet only, so sign those calls with `signContractCall(seed, call, NetworkType.TESTNET)`.
+
+#### TransactionBuilder
 
 ```typescript
 import { TransactionBuilder, fromBase58, toAtomicAma } from '@amadeus-protocol/sdk'
 
-// Instance-based usage (convenient for multiple transactions)
-const builder = new TransactionBuilder('5Kd3N...') // Base58 encoded seed
+const builder = new TransactionBuilder('5Kd3N...') // Base58 seed
 
-// Option 1: Build and sign in one step (convenience)
-const { txHash, txPacked } = builder.transfer({
-	recipient: '5Kd3N...', // Base58 encoded recipient address
-	amount: 10.5, // Amount in human-readable format
-	symbol: 'AMA' // Token symbol
-})
+// Build and sign a Coin transfer in one step (amount in AMA)
+const transfer = builder.transfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
 
-// Option 2: Build unsigned, then sign (more control)
-const unsignedTx = builder.buildTransfer({
-	recipient: '5Kd3N...',
-	amount: 10.5,
-	symbol: 'AMA'
-})
-// Can inspect or modify unsignedTx before signing
-const { txHash, txPacked } = builder.sign(unsignedTx)
+// Build unsigned, inspect, then sign
+const unsignedTx = builder.buildTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
+console.log('Nonce:', unsignedTx.tx.nonce, 'Action:', unsignedTx.tx.action)
+const signed = builder.sign(unsignedTx)
 
-// Option 3: Build custom transaction and sign
-const unsignedTx = builder.build('Coin', 'transfer', [
-	fromBase58('5Kd3N...'), // Recipient bytes
-	toAtomicAma(10.5).toString(), // Amount in atomic units
-	'AMA'
-])
-const { txHash, txPacked } = builder.sign(unsignedTx)
-
-// Option 4: Build and sign custom transaction (convenience)
-const { txHash, txPacked } = builder.buildAndSign('Coin', 'transfer', [
+// Any contract call from raw args (Coin needs recipient bytes and atomic amounts)
+const custom = builder.buildAndSign('Coin', 'transfer', [
 	fromBase58('5Kd3N...'),
 	toAtomicAma(10.5).toString(),
 	'AMA'
 ])
+
+// Each result is { txHash, txPacked }, ready for sdk.transaction.submit(txPacked)
+console.log(transfer.txHash, signed.txHash, custom.txHash)
 ```
 
-#### ABI-Driven (Lockup, LockupPrime, etc.)
+#### ABI-Driven (Lockup, LockupPrime, any ABI)
 
-The recommended pattern for built-in contracts. Pass any ABI to `builder.contract(abi)` and get fully-typed function calls:
+Pass an `as const` ABI to `builder.contract(abi)` to get one typed method per ABI function. Each
+method builds and signs in one step. ABI params are strings: amounts are atomic units.
 
 ```typescript
 import {
@@ -245,74 +252,63 @@ import {
 
 const builder = new TransactionBuilder('5Kd3N...')
 
-// LockupPrime — auto-typed methods derived from the ABI
-builder.contract(LOCKUP_PRIME_ABI).lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
-builder.contract(LOCKUP_PRIME_ABI).unlock({ vaultIndex: '3' })
-builder.contract(LOCKUP_PRIME_ABI).daily_checkin({ vaultIndex: '7' })
+// LockupPrime: tier is one of '7d', '30d', '90d', '180d', '365d'
+const lock = builder
+	.contract(LOCKUP_PRIME_ABI)
+	.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+const primeUnlock = builder.contract(LOCKUP_PRIME_ABI).unlock({ vaultIndex: '3' })
+const checkin = builder.contract(LOCKUP_PRIME_ABI).daily_checkin({ vaultIndex: '7' })
 
-// Lockup
-builder.contract(LOCKUP_ABI).unlock({ vaultIndex: '5' })
+// Lockup (vesting)
+const unlock = builder.contract(LOCKUP_ABI).unlock({ vaultIndex: '5' })
 ```
+
+The convenience methods `lockupPrimeLock({ amount, tier })` (amount in AMA), `lockupPrimeUnlock`,
+`lockupPrimeDailyCheckin` and `lockupUnlock({ vaultIndex })` do the same.
 
 #### NFT (transfer, mint, create_collection)
 
-The `Nft` built-in contract has dedicated builder methods. NFT amounts are integer counts, **not** AMA atomic units.
+The `Nft` built-in contract has dedicated builder methods. NFT amounts are integer counts, **not**
+AMA atomic units.
+
+`Nft` runs on testnet only (see above), and these builder methods sign for mainnet. In node 1.6.5,
+`Nft.create_collection` and `Nft.mint` also take a single VecPack-encoded map argument, while
+`buildNftCreateCollection` and `buildNftMint` send positional arguments, so even a testnet-signed
+call fails with `invalid_args`. `Nft.transfer` takes the positional arguments the SDK sends.
 
 ```typescript
-const builder = new TransactionBuilder(privateKey)
+import { TransactionBuilder } from '@amadeus-protocol/sdk'
 
-// Create a collection (caller becomes owner)
-builder.nftCreateCollection({ collection: 'AGENTIC', soulbound: false })
+const builder = new TransactionBuilder('5Kd3N...')
+
+// Create a collection (the caller becomes its owner)
+const created = builder.nftCreateCollection({ collection: 'AGENTIC', soulbound: false })
 
 // Mint tokens (collection owner only)
-builder.nftMint({ recipient: '5Kd3N...', amount: 10, collection: 'AGENTIC', token: '1' })
-
-// Transfer
-builder.nftTransfer({ recipient: '5Kd3N...', amount: 1, collection: 'AGENTIC', token: '1' })
-```
-
-Static variants: `TransactionBuilder.buildSignedNftTransfer/Mint/CreateCollection(input)` — each takes the same params plus `senderPrivkey`.
-
-### Signing Transactions
-
-The SDK supports two patterns. Pick whichever fits your workflow.
-
-#### Pattern 1 — Auto-signed (high-level, recommended)
-
-The `TransactionBuilder` instance methods build **and** sign in one call. Best for app code where you have the private key in hand.
-
-```typescript
-import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
-
-const builder = new TransactionBuilder('5Kd3N...') // Base58 seed
-
-// Coin transfer
-const a = builder.transfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
-
-// ABI-driven (any contract)
-const b = builder.contract(LOCKUP_PRIME_ABI).lock({
-	amount: toAtomicAma(100).toString(),
-	tier: '30d'
+const minted = builder.nftMint({
+	recipient: '5Kd3N...',
+	amount: 10,
+	collection: 'AGENTIC',
+	token: '1'
 })
 
-// NFT
-const c = builder.nftTransfer({
+// Transfer (not possible in a soulbound collection)
+const sent = builder.nftTransfer({
 	recipient: '5Kd3N...',
 	amount: 1,
 	collection: 'AGENTIC',
 	token: '1'
 })
-
-// All return { txHash, txPacked } ready for sdk.transaction.submit(txPacked)
 ```
 
-#### Pattern 2 — Manual: build a `ContractCall`, sign separately
+Static variants `TransactionBuilder.buildSignedNftTransfer/Mint/CreateCollection(input)` take the
+same params plus `senderPrivkey`.
 
-Build a `ContractCall` with a standalone helper or `createContract(ABI)`, then sign it independently with `TransactionBuilder.signCall(privkey, call)`. Useful when:
+#### Build a `ContractCall`, sign separately
 
-- You want to inspect or log the call before signing
-- The signing key lives somewhere else (HSM, separate process, separate machine)
-- You want to batch-build and sign at the end
+Build a `ContractCall` with a standalone helper or `createContract(ABI)`, then sign it with
+`TransactionBuilder.signCall(privkey, call)`. Useful when you want to inspect or log the call
+before signing, or when the key lives in another process.
 
 ```typescript
 import {
@@ -324,121 +320,251 @@ import {
 	toAtomicAma
 } from '@amadeus-protocol/sdk'
 
-// Build a ContractCall — three ways:
-
-// A. Standalone helper (Coin)
-const callA = buildCoinTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
-
-// B. Standalone helper (NFT)
-const callB = buildNftTransfer({
+// Standalone helpers
+const coinCall = buildCoinTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
+const nftCall = buildNftTransfer({
 	recipient: '5Kd3N...',
 	amount: 1,
 	collection: 'AGENTIC',
 	token: '1'
 })
 
-// C. ABI-driven, any contract
+// ABI-driven, any contract
 const lockupPrime = createContract(LOCKUP_PRIME_ABI)
-const callC = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+const lockCall = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+console.log('Will call:', lockCall.contract, lockCall.method, lockCall.args)
 
-// Inspect if you want
-console.log('Will call:', callC.contract, callC.method, callC.args)
-
-// Sign with any private key (no builder instance needed)
-const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', callC)
+// Sign with any private key, no builder instance needed
+const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', lockCall)
 ```
 
-#### Build-unsigned-then-sign (debugging)
-
-If you need to inspect the full unsigned transaction (nonce, signer, action) before signing:
-
-```typescript
-const builder = new TransactionBuilder('5Kd3N...')
-
-const unsigned = builder.buildTransfer({ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' })
-console.log('Nonce:', unsigned.tx.nonce)
-console.log('Action:', unsigned.tx.action)
-
-const { txHash, txPacked } = builder.sign(unsigned)
-```
-
-#### Using Static Methods
+#### Static methods
 
 ```typescript
 import {
 	TransactionBuilder,
-	fromBase58,
-	toAtomicAma,
-	getPublicKey,
-	deriveSkAndSeed64FromBase58Seed
+	deriveSkAndSeed64FromBase58Seed,
+	getPublicKey
 } from '@amadeus-protocol/sdk'
 
-// Option 1: Build and sign transfer in one step (convenience)
-const { txHash, txPacked } = TransactionBuilder.buildSignedTransfer({
-	senderPrivkey: '5Kd3N...', // Base58 encoded seed
-	recipient: '5Kd3N...', // Base58 encoded recipient address
-	amount: 10.5, // Amount in human-readable format
-	symbol: 'AMA' // Token symbol
+const seed = '5Kd3N...'
+
+// Build and sign a transfer in one step
+const transfer = TransactionBuilder.buildSignedTransfer({
+	senderPrivkey: seed,
+	recipient: '5Kd3N...',
+	amount: 10.5,
+	symbol: 'AMA'
 })
 
-// Option 2: Build unsigned transfer, then sign
-const { seed64 } = deriveSkAndSeed64FromBase58Seed('5Kd3N...')
-const signerPubKey = getPublicKey(seed64)
-
+// Build unsigned with an explicit signer public key, then sign
+const { seed64 } = deriveSkAndSeed64FromBase58Seed(seed)
 const unsignedTx = TransactionBuilder.buildTransfer(
 	{ recipient: '5Kd3N...', amount: 10.5, symbol: 'AMA' },
-	signerPubKey
+	getPublicKey(seed64)
 )
-const { txHash, txPacked } = TransactionBuilder.sign(unsignedTx, '5Kd3N...')
-
-// Option 3: Build custom unsigned transaction, then sign
-const unsignedTx = TransactionBuilder.build(
-	signerPubKey,
-	'Coin', // Contract name
-	'transfer', // Method name
-	[fromBase58('5Kd3N...'), toAtomicAma(10.5).toString(), 'AMA']
-)
-const { txHash, txPacked } = TransactionBuilder.sign(unsignedTx, '5Kd3N...')
-
-// Option 4: Build and sign custom transaction (convenience)
-const { seed64, sk } = deriveSkAndSeed64FromBase58Seed('5Kd3N...')
-const signerPubKey = getPublicKey(seed64)
-
-const { txHash, txPacked } = TransactionBuilder.buildAndSign(signerPubKey, sk, 'Coin', 'transfer', [
-	fromBase58('5Kd3N...'),
-	toAtomicAma(10.5).toString(),
-	'AMA'
-])
+const signed = TransactionBuilder.sign(unsignedTx, seed)
 ```
+
+### Submitting Transactions
+
+`submit()` returns `{ hash }` once the node accepts the transaction into its pool.
+`submitAndWait()` also waits for it to land in an entry and returns `{ hash, metadata, receipt }`.
+A rejected transaction (bad signature, nonce, or not enough balance to cover execution) is thrown
+as an `AmadeusSDKError` whose message is the node's error code. A transaction that was included
+but failed during execution comes back with `receipt.success === false` and the reason in
+`receipt.result`.
+
+```typescript
+import {
+	AmadeusSDK,
+	AmadeusSDKError,
+	TransactionBuilder,
+	getExecutionErrorMessage,
+	getValidationErrorMessage
+} from '@amadeus-protocol/sdk'
+
+const sdk = new AmadeusSDK()
+const builder = new TransactionBuilder('5Kd3N...')
+const { txPacked } = builder.transfer({ recipient: '5Kd3N...', amount: 1.5, symbol: 'AMA' })
+
+try {
+	const { hash, metadata, receipt } = await sdk.transaction.submitAndWait(txPacked)
+	if (receipt.success) {
+		console.log('Included at height', metadata.entry_height, hash)
+	} else {
+		console.error('Execution failed:', getExecutionErrorMessage(receipt.result ?? 'unknown'))
+	}
+} catch (error) {
+	if (!(error instanceof AmadeusSDKError)) throw error
+	// e.g. invalid_signature, invalid_tx_nonce, not_enough_tx_exec_balance, txpool_full
+	console.error('Rejected:', getValidationErrorMessage(error.message.replace(/^HTTP \d+: /, '')))
+}
+```
+
+**Confirmed vs finalized.** By default `submitAndWait` returns as soon as the transaction is
+included in an entry (confirmed). Pass `{ finalized: true }` to wait until consensus is reached on
+that entry, for example before crediting an off-chain ledger:
+
+```typescript
+import { AmadeusSDK, TransactionBuilder } from '@amadeus-protocol/sdk'
+
+const sdk = new AmadeusSDK()
+const { txPacked } = new TransactionBuilder('5Kd3N...').transfer({
+	recipient: '5Kd3N...',
+	amount: 1,
+	symbol: 'AMA'
+})
+
+const { hash, metadata } = await sdk.transaction.submitAndWait(txPacked, { finalized: true })
+console.log(hash, metadata.status)
+```
+
+Submit each packed transaction once: calling `submit()` and then `submitAndWait()` with the same
+`txPacked` sends it twice.
+
+### Networks and testnet
+
+```typescript
+import {
+	AmadeusSDK,
+	NETWORK_URLS,
+	NetworkType,
+	TESTNET_FAUCET_URL,
+	buildCoinTransfer,
+	signContractCall
+} from '@amadeus-protocol/sdk'
+
+// NETWORK_URLS holds the host only; the SDK base URL needs /api
+const testnet = new AmadeusSDK({ baseUrl: `${NETWORK_URLS[NetworkType.TESTNET]}/api` })
+
+// Testnet verifies signatures under its own domain, so sign with NetworkType.TESTNET
+const call = buildCoinTransfer({ recipient: '5Kd3N...', amount: 1, symbol: 'AMA' })
+const { txPacked } = signContractCall('5Kd3N...', call, NetworkType.TESTNET)
+
+const { hash } = await testnet.transaction.submit(txPacked)
+console.log('Submitted', hash, '- testnet AMA:', TESTNET_FAUCET_URL)
+```
+
+| Network | API base URL                      | Explorer                           |
+| ------- | --------------------------------- | ---------------------------------- |
+| Mainnet | `https://mainnet-rpc.ama.one/api` | `https://explorer.ama.one`         |
+| Testnet | `https://testnet-rpc.ama.one/api` | `https://testnet.explorer.ama.one` |
+
+`TransactionBuilder`, `TransactionBuilder.signCall()` and `createContract(abi).connect(key)` always
+sign with the mainnet domain, and a testnet node rejects their output with `invalid_signature`.
+For testnet use `signContractCall(seed, call, NetworkType.TESTNET)`,
+`buildAndSignRaw(pk, sk, contract, method, args, NetworkType.TESTNET)` or
+`signUnsigned(unsignedTx, sk, NetworkType.TESTNET)`. `txDstForNetwork(network)` returns the tag.
+The testnet faucet (`TESTNET_FAUCET_URL`) gives 100 AMA per claim, once every 24 hours per IP.
+
+### Reading Contract State
+
+`/api/contract/get_prefix` answers with VecPack binary pages of `{ rows, cursor }` (at most 1,000
+rows each). `contract.getPrefixEntries()` follows the cursor and returns every row as raw bytes,
+with the queried prefix stripped from each key. The node rejects prefixes shorter than 8 bytes.
+`contract.getPrefix()` parses the body as text and cannot read it.
+
+```typescript
+import { AmadeusSDK, buildOwnerVaultsKeyPrefix } from '@amadeus-protocol/sdk'
+
+const sdk = new AmadeusSDK()
+
+// Prefix bytes, or a plain string sent as UTF-8 (not Base58)
+const entries = await sdk.contract.getPrefixEntries(buildOwnerVaultsKeyPrefix('5Kd3N...'))
+for (const [key, value] of entries) {
+	console.log(new TextDecoder().decode(key), value.length, 'bytes')
+}
+```
+
+Making your own HTTP calls, `readAllPrefixPages()` runs the paging loop:
+
+```typescript
+import {
+	buildOwnerVaultsKeyPrefix,
+	prefixPagePath,
+	readAllPrefixPages
+} from '@amadeus-protocol/sdk'
+
+const apiBaseUrl = 'https://mainnet-rpc.ama.one/api'
+const prefix = buildOwnerVaultsKeyPrefix('5Kd3N...')
+
+const entries = await readAllPrefixPages(async (cursor) => {
+	const response = await fetch(apiBaseUrl + prefixPagePath(cursor), {
+		method: 'POST',
+		body: new Uint8Array(prefix)
+	})
+	if (!response.ok) throw new Error(`get_prefix failed: HTTP ${response.status}`)
+	return response.arrayBuffer()
+})
+```
+
+It throws on a page that does not decode, on a repeated cursor, or past `maxPages` (default 50),
+instead of returning a cut-off list.
+
+### Staking (LockupVault)
+
+Amadeus staking is the `LockupVault` contract (`bic:lockup_vault:`): AMA locked for a tier
+duration, optionally backing a validator, and earning an APY fixed when the vault is created. Not to be
+confused with `Lockup` (vesting) or `LockupPrime` (PRIME points).
+
+```typescript
+import { AmadeusSDK, flatToAma } from '@amadeus-protocol/sdk'
+
+const sdk = new AmadeusSDK()
+const position = await sdk.staking.getPosition('5Kd3N...')
+
+console.log(position.totalStaked) // AMA staked = principal + yield compounded into the vaults
+console.log(position.totalAccrued) // yield compounded so far
+console.log(position.weightedApyPercent) // stake-weighted average APY
+console.log(position.vaultCount, position.nextMatureEpoch)
+
+for (const vault of position.vaults) {
+	console.log(vault.index, vault.tier, flatToAma(vault.totalFlat), vault.validator)
+}
+```
+
+- `sdk.staking.getPosition(publicKey, options?)`: vaults plus rolled-up totals
+- `sdk.staking.getVaults(publicKey, options?)`: just the vaults
+- `sdk.staking.getAllVaults(options?)`: every vault on the chain (explorer-style views)
+- `sdk.staking.getValidatorCommissions(options?)`: commission per validator, epoch-resolved
+- `sdk.staking.getCurrentEpoch()`: epoch from the chain height
+
+Pass `{ currentEpoch }` across several calls so they resolve against one epoch and skip the extra
+round trip. Amounts ending in `Flat` are atomic `bigint`s, because real positions exceed `2^53`
+atomic units: convert them with `flatToAma()`, not `Number(...) / 1e9` or `fromAtomicAma()`.
+
+The building blocks are exported for callers that own their HTTP layer:
+`buildOwnerVaultsKeyPrefix`, `readAllPrefixPages`, `prefixPagePath`, `decodeContractStatePage`,
+`decodeContractState`, `parseLockupVaultEntries`, `summarizeLockupVaults`, `epochFromHeight`,
+`flatToAma`.
 
 ### Serialization
 
 ```typescript
 import { encode, decode } from '@amadeus-protocol/sdk'
 
-// Encode data to canonical format
-const data = {
-	foo: 'bar',
-	count: 42,
-	items: [1, 2, 3]
-}
-const encoded = encode(data)
+// Encode data to canonical VecPack bytes
+const encoded = encode({ foo: 'bar', count: 42, items: [1, 2, 3] })
 
-// Decode data from canonical format
+// Decode back: a Map with byte-string keys, integers as bigint
 const decoded = decode(encoded)
 ```
 
 ### Token Conversions
 
 ```typescript
-import { toAtomicAma, fromAtomicAma } from '@amadeus-protocol/sdk'
+import { toAtomicAma, fromAtomicAma, flatToAma } from '@amadeus-protocol/sdk'
 
-// Convert to atomic units
-const atomic = toAtomicAma(1.5) // Returns 1500000000
-
-// Convert from atomic units
-const ama = fromAtomicAma(1500000000) // Returns 1.5
+const atomic = toAtomicAma(1.5) // 1500000000 (also accepts '1.5')
+const ama = fromAtomicAma(1500000000) // 1.5
+const large = flatToAma(40_414_833_934_371_491n) // bigint-safe
 ```
+
+`fromAtomicAma()` returns 0 for 0 and throws for negative values, values between 0 and 1, and
+values above `Number.MAX_SAFE_INTEGER`; use `flatToAma()` for `bigint` amounts. `toAtomicAma()` is
+exact for up to 9 decimals and rounds anything finer (`toAtomicAma('1.0000000005')` is
+`1000000001`), so check user input with `validateAmount()` first.
 
 ### Mnemonics and account derivation
 
@@ -448,9 +574,8 @@ import { generateMnemonic, validateMnemonic, mnemonicToSeedBase58 } from '@amade
 // Generate a 12-word mnemonic
 const mnemonic = generateMnemonic()
 
-// Validate a mnemonic
 if (validateMnemonic(mnemonic)) {
-	// Derive a Base58 seed (compatible with TransactionBuilder)
+	// Base58 seed for TransactionBuilder (EIP-2333 derivation)
 	const seedBase58 = mnemonicToSeedBase58(mnemonic)
 }
 ```
@@ -462,26 +587,30 @@ One phrase can open **two different accounts**, depending on how it was derived:
 | `eip2333`  | EIP-2333 BLS12-381 along `m/12381'/36969'/0'/0'/0'`           | `mnemonicToSeedBase58` in SDK 1.4.0+, hub, Prime Hub, cli-wallet         |
 | `legacy`   | The raw 64-byte BIP39 seed, used directly as the Amadeus seed | `mnemonicToSeedBase58` in SDK 1.3.0 and earlier, and wallets built on it |
 
-`mnemonicToSeedBase58` always returns the `eip2333` seed. To recover a wallet that may have
-been created with the legacy derivation, derive both candidates:
+`mnemonicToSeedBase58` always returns the `eip2333` seed. To recover a wallet that may have been
+created with the legacy derivation, derive both candidates:
 
 ```typescript
 import { mnemonicToCandidateKeypairs, validateMnemonic } from '@amadeus-protocol/sdk'
 
-// Candidates do not check the checksum, so validate first: a typo still derives two
-// plausible-looking but wrong accounts.
+const mnemonic = 'your twelve word recovery phrase ...'
+
+// Candidates skip the checksum, so validate first: a typo still derives two wrong accounts
 if (!validateMnemonic(mnemonic)) throw new Error('Invalid recovery phrase')
 
 const [standard, legacy] = mnemonicToCandidateKeypairs(mnemonic)
 // standard.derivation === 'eip2333', legacy.derivation === 'legacy'
-// Each has { derivation, seed, publicKey }. To pick one on import, see resolveMnemonicImport below.
+console.log(standard.publicKey, legacy.publicKey)
 ```
 
-When you already know the address (for example, copied from the wallet), resolve the
-matching candidate directly. It trims the address and throws on an invalid phrase:
+When you already know the address (for example, copied from the wallet), resolve the matching
+candidate directly. It trims the address and throws on an invalid phrase:
 
 ```typescript
 import { TransactionBuilder, resolveCandidateForAddress } from '@amadeus-protocol/sdk'
+
+const mnemonic = 'your twelve word recovery phrase ...'
+const walletAddress = '5Kd3N...'
 
 const candidate = resolveCandidateForAddress(mnemonic, walletAddress)
 if (!candidate) throw new Error('This phrase does not open that address')
@@ -496,13 +625,14 @@ const builder = new TransactionBuilder(candidate.seed)
 other is confirmed empty, or both are confirmed empty (standard wins). Otherwise (both have
 history, or any probe is unknown) it reports that the user must choose. Always show the other
 address too. `addressHasActivity` is the default probe: it checks current balances (including
-PRIME) and transactions sent or received, and answers `'unknown'` rather than `'inactive'` when
-a request fails or times out (8 s by default). Pass the same API base URL the rest of your app
-uses; any path prefix is kept.
+PRIME) and transactions sent or received, and answers `'unknown'` rather than `'inactive'` when a
+request fails or times out (8 s by default). Pass the same API base URL the rest of your app
+uses; unlike `AmadeusSDK`, it keeps any path prefix.
 
 ```typescript
 import { addressHasActivity, resolveMnemonicImport, validateMnemonic } from '@amadeus-protocol/sdk'
 
+const mnemonic = 'your twelve word recovery phrase ...'
 if (!validateMnemonic(mnemonic)) throw new Error('Invalid recovery phrase')
 
 const apiBaseUrl = 'https://mainnet-rpc.ama.one/api'
@@ -518,19 +648,19 @@ if (result.needsChoice) {
 ```
 
 To label an account that was saved with its phrase but without a recorded derivation, use
-`derivationForSeed(mnemonic, seed)`. It returns `'eip2333'`, `'legacy'` or `null` (also for
-a malformed phrase, so it never throws).
+`derivationForSeed(mnemonic, seed)`. It returns `'eip2333'`, `'legacy'` or `null` (also for a
+malformed phrase, so it never throws).
 
 ### Encoding Utilities
 
 ```typescript
 import { toBase58, fromBase58, uint8ArrayToBase64, base64ToUint8Array } from '@amadeus-protocol/sdk'
 
-// Base58 encoding
+// Base58
 const encoded = toBase58(new Uint8Array([1, 2, 3]))
-const decoded = fromBase58('5Kd3N...')
+const decoded = fromBase58(encoded)
 
-// Base64 encoding
+// Base64
 const base64 = uint8ArrayToBase64(new Uint8Array([1, 2, 3]))
 const bytes = base64ToUint8Array(base64)
 ```
@@ -540,31 +670,62 @@ const bytes = base64ToUint8Array(base64)
 ```typescript
 import { encryptWithPassword, decryptWithPassword } from '@amadeus-protocol/sdk'
 
-// Encrypt sensitive data (e.g., private keys)
+// Encrypt sensitive data (e.g., a seed)
 const encrypted = await encryptWithPassword('sensitive wallet data', 'my-password')
-// Returns: { encryptedData, iv, salt } (all Base64 encoded)
+// { encryptedData, iv, salt }, all Base64
 
-// Decrypt the data
+// Throws 'Decryption failed. Incorrect password or corrupted data.' on a wrong password
 const decrypted = await decryptWithPassword(encrypted, 'my-password')
-// Returns: 'sensitive wallet data'
 ```
 
 ## API Reference
 
+The method-by-method reference is in [docs/API.md](./docs/API.md), and task-oriented examples are
+in [docs/GUIDE.md](./docs/GUIDE.md). The summary below lists every export group.
+
 ### Constants
 
-- `AMADEUS_PUBLIC_KEY_BYTE_LENGTH`: Byte length of public key (48)
-- `AMADEUS_SEED_BYTE_LENGTH`: Byte length of seed (64)
-- `AMA_TOKEN_DECIMALS`: Number of decimal places (9)
+- `AMADEUS_PUBLIC_KEY_BYTE_LENGTH`: Byte length of a public key (48)
+- `AMADEUS_SEED_BYTE_LENGTH`: Byte length of a seed (64)
+- `AMA_TOKEN_DECIMALS`: Decimal places (9)
 - `AMA_TOKEN_DECIMALS_MULTIPLIER`: Multiplier for conversions (10^9)
-- `AMA_TRANSFER_FEE`: Network transfer fee (0.02)
-- `EXPLORER_URL`: Default explorer URL
-- `NODE_API_URL`: Default node API URL
+- `MIN_TRANSFERABLE_AMOUNT`: Smallest amount in AMA (1 atomic unit)
+- `AMA_TRANSFER_FEE`: Flat fee for a standard transfer, in AMA (0.02)
+- `EXPLORER_URL`: Default explorer URL (`https://explorer.ama.one`)
+- `NODE_API_URL`: Default node API URL (`https://mainnet-rpc.ama.one/api`)
+- `DEFAULT_TIMEOUT`: Default request timeout in ms (30000)
+- `SDK_VERSION`: Package version
+
+### Networks
+
+- `NetworkType`: `MAINNET` (`'mainnet'`), `TESTNET` (`'testnet'`), `CUSTOM` (`'custom'`)
+- `NETWORK_URLS`: RPC host per network (no `/api` suffix)
+- `NETWORK_EXPLORER_URLS`, `NETWORK_CONFIGS` (`{ rpcUrl, explorerUrl }`)
+- `TESTNET_FAUCET_URL`: `https://mcp.ama.one/testnet-faucet`
+
+### API Client
+
+- `new AmadeusSDK(config?)`: `config.baseUrl`, `config.timeout`, `config.headers`
+- Modules: `sdk.chain`, `sdk.wallet`, `sdk.transaction`, `sdk.contract`, `sdk.epoch`, `sdk.peer`,
+  `sdk.proof`, `sdk.staking`
+- `sdk.getConfig()`, `sdk.setBaseUrl(url)`, `sdk.setHeaders(headers)`, `sdk.cancel()` (aborts
+  every in-flight request), `AmadeusSDK.getVersion()`
+- `sdk.client`: the underlying `AmadeusClient` (`get`, `post`, `postBinary`)
+- `new MetricsAPI({ baseUrl })`: public activity metrics, see [docs/PUBLIC-METRICS.md](./docs/PUBLIC-METRICS.md)
 
 ### Serialization
 
 - `encode(term: SerializableValue): Uint8Array` - Encode value to canonical format
 - `decode(bytes: Uint8Array | number[]): DecodedValue` - Decode from canonical format
+- `decodeContractStatePage(bytes)`: one `get_prefix` page as `{ entries, cursor }`
+- `decodeContractState(bytes)`: one page's `[key, value]` pairs
+
+### Contract State
+
+- `readAllPrefixPages(fetchPage, { maxPages }?)`: follow `get_prefix` pages to the end
+- `prefixPagePath(cursor, endpoint?)`: page path with the `?cursor=` query
+- `decodeContractStateToBase64(bytes)`: one page as Base64 `[key, value]` strings
+- `parseStateNumber(value)`, `parseStateString(value)`: decode stored values
 
 ### Crypto
 
@@ -573,20 +734,21 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 - `getPublicKey(seed64: Uint8Array): Uint8Array` - Derive public key from seed
 - `derivePublicKeyFromSeedBase58(base58Seed: string): string` - Derive public key from Base58 seed
 - `deriveSkAndSeed64FromBase58Seed(base58Seed64: string)` - Derive secret key and seed
+- `secretKeyToSeedBase58(secretKey: Uint8Array): string` - Wrap a raw 32-byte BLS secret key into a 64-byte Base58 seed
 
 ### Mnemonics (BIP39)
 
 - `generateMnemonic(): string` - Generate a 12-word BIP39 mnemonic
 - `validateMnemonic(mnemonic: string): boolean` - Validate a BIP39 mnemonic
 - `normalizeMnemonic(mnemonic: string): string` - Trim, lowercase and collapse whitespace; the form to store and compare phrases in
-- `mnemonicToSeedBase58(mnemonic: string): string` - Derive the standard (`eip2333`) Base58 seed from a mnemonic. Returned the `legacy` seed before 1.4.0
+- `mnemonicToSeedBase58(mnemonic: string): string` - Derive the standard (`eip2333`) Base58 seed. Returned the `legacy` seed before 1.4.0
 - `mnemonicToCandidateKeypairs(mnemonic: string): MnemonicCandidate[]` - Derive both candidates, `eip2333` first and `legacy` second. Does not validate the mnemonic
 - `resolveCandidateForAddress(mnemonic: string, address: string): MnemonicCandidate | null` - Validate the mnemonic and return the candidate that opens `address`, or `null`
 - `derivationForSeed(mnemonic: string, seed: string): HdDerivation | null` - Which derivation of the mnemonic produced `seed`, or `null`
 - `resolveMnemonicImport(mnemonic: string, probeActivity: (address: string) => Promise<AddressActivity>): Promise<ResolvedMnemonicImport>` - Derive both candidates, probe each for history and pick the account to open, or report that the user must choose
 - `addressHasActivity(apiBaseUrl: string, address: string, timeoutMs?: number): Promise<AddressActivity>` - `'active'`, `'inactive'` or `'unknown'` from balances and transaction history. Never throws
-- `secretKeyToSeedBase58(secretKey: Uint8Array): string` - Wrap a raw 32-byte BLS secret key into a 64-byte Base58 seed
-- `encodeVaultSecret`, `decodeVaultSecret`, `detectInputType` - Vault helpers
+- `detectInputType(input: string): 'mnemonic' | 'seed'` - Whether user input looks like a 12/24-word phrase or a Base58 seed
+- `encodeVaultSecret(seed, mnemonic?)`, `decodeVaultSecret(decrypted)` - Store a seed with its optional phrase
 
 ### Encoding
 
@@ -601,23 +763,24 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
 
 ### Conversion
 
-- `toAtomicAma(ama: number): number` - Convert AMA to atomic units
-- `fromAtomicAma(atomicAma: number | string): number` - Convert atomic units to AMA
+- `toAtomicAma(ama: number | string): number` - Convert AMA to atomic units (rounds past 9 decimals)
+- `fromAtomicAma(atomicAma: number | string): number` - Convert atomic units to AMA. Returns 0 for 0; throws for negative values, values between 0 and 1, and values above `Number.MAX_SAFE_INTEGER`
+- `flatToAma(flat: bigint): number` - Convert a `bigint` atomic amount to AMA
 
 ### Encryption
 
-- `encryptWithPassword(plaintext: string, password: string): Promise<EncryptedPayload>` - Encrypt data with password (AES-GCM + PBKDF2)
+- `encryptWithPassword(plaintext: string, password: string): Promise<EncryptedPayload>` - Encrypt data with password (AES-GCM + PBKDF2, 100,000 iterations)
 - `decryptWithPassword(payload: EncryptedPayload, password: string): Promise<string>` - Decrypt data with password
 - `generateSalt(): Uint8Array` - Generate random salt (16 bytes)
 - `generateIV(): Uint8Array` - Generate random IV (12 bytes)
-- `deriveKey(password: string, salt: Uint8Array | ArrayBuffer): Promise<CryptoKey>` - Derive AES-GCM key from password
+- `deriveKey(password: string, salt: Uint8Array | ArrayBuffer, iterations?: number): Promise<CryptoKey>` - Derive AES-GCM key from password
 
 ### Transaction Building
 
-- `TransactionBuilder` - Class for building and signing transactions
-    - **Constructor:** `new TransactionBuilder(privateKey?: string)` - Create a new builder instance
-    - **ABI-driven (recommended):**
-        - `contract(abi)` - Returns a typed, signer-bound contract interface; each ABI function becomes a method that builds and signs in one step
+- `TransactionBuilder` - Class for building and signing transactions (mainnet signing domain)
+    - **Constructor:** `new TransactionBuilder(privateKey?: string)` - Base58 seed used by the instance methods
+    - **ABI-driven:**
+        - `contract(abi)` - Typed, signer-bound contract; each ABI function builds and signs in one step
     - **Generic instance methods:**
         - `build(contract, method, args, signerPk?): UnsignedTransactionWithHash`
         - `sign(unsignedTx, signerSk?): BuildTransactionResult`
@@ -625,94 +788,83 @@ const decrypted = await decryptWithPassword(encrypted, 'my-password')
         - `buildFromCall(call): UnsignedTransactionWithHash`
         - `buildAndSignCall(call): BuildTransactionResult`
     - **Coin transfer:**
-        - `buildTransfer(input, signerPk?): UnsignedTransactionWithHash`
-        - `transfer(input): BuildTransactionResult`
+        - `buildTransfer({ recipient, amount, symbol }): UnsignedTransactionWithHash`
+        - `transfer({ recipient, amount, symbol }): BuildTransactionResult`
     - **NFT (Nft contract):**
         - `nftTransfer({ recipient, amount, collection, token }): BuildTransactionResult`
         - `nftMint({ recipient, amount, collection, token }): BuildTransactionResult`
         - `nftCreateCollection({ collection, soulbound? }): BuildTransactionResult`
     - **Lockup / LockupPrime convenience methods:**
         - `lockupUnlock({ vaultIndex }): BuildTransactionResult`
-        - `lockupPrimeLock({ amount, tier }): BuildTransactionResult`
+        - `lockupPrimeLock({ amount, tier }): BuildTransactionResult` (amount in AMA)
         - `lockupPrimeUnlock({ vaultIndex }): BuildTransactionResult`
         - `lockupPrimeDailyCheckin({ vaultIndex }): BuildTransactionResult`
-    - **Static methods:** `signCall`, `buildFromCall`, `buildAndSignCall`, `buildSignedTransfer`, `buildSignedNft{Transfer,Mint,CreateCollection}`, `buildSignedLockup{Unlock}`, `buildSignedLockupPrime{Lock,Unlock,DailyCheckin}`
+    - **Static methods:** `build`, `sign`, `buildAndSign`, `buildTransfer`, `signCall`, `buildFromCall`, `buildAndSignCall`, `buildSignedTransfer`, `buildSignedNft{Transfer,Mint,CreateCollection}`, `buildSignedLockupUnlock`, `buildSignedLockupPrime{Lock,Unlock,DailyCheckin}`
+
+### Signing Primitives
+
+Stateless functions behind `TransactionBuilder`. The ones that sign take an optional `network`
+(default mainnet):
+
+- `buildUnsigned(signerPk, contract, method, args)`, `buildUnsignedFromCall(signerPk, call)`
+- `signUnsigned(unsignedTx, signerSk, network?)`
+- `buildAndSignRaw(signerPk, signerSk, contract, method, args, network?)`
+- `signContractCall(senderPrivkey, call, network?)`
+- `txDstForNetwork(network?)`, `normalizeSignerSk(signerSk)`
 
 ### Contract ABIs
 
-`as const` ABI definitions for built-in contracts. Pass any ABI to `createContract(abi)` or `builder.contract(abi)` for fully-typed function calls.
+`as const` ABI definitions for built-in contracts. Pass any ABI to `createContract(abi)` or
+`builder.contract(abi)` for fully-typed function calls.
 
-- `LOCKUP_ABI` - `Lockup` (vesting) — `unlock(vaultIndex)`
-- `LOCKUP_PRIME_ABI` - `LockupPrime` — `lock(amount, tier)`, `unlock(vaultIndex)`, `daily_checkin(vaultIndex)`
-- `NFT_ABI` - `Nft` — `transfer`, `mint`, `create_collection`
+- `LOCKUP_ABI` - `Lockup` (vesting): `unlock(vaultIndex)`
+- `LOCKUP_PRIME_ABI` - `LockupPrime`: `lock(amount, tier)`, `unlock(vaultIndex)`, `daily_checkin(vaultIndex)`; tiers `7d`, `30d`, `90d`, `180d`, `365d`
+- `NFT_ABI` - `Nft`: `transfer`, `mint`, `create_collection`
 
-Standalone builders that return a `ContractCall`:
+Builders that return a `ContractCall` (`{ contract, method, args }`):
 
 - `buildCoinTransfer({ recipient, amount, symbol })`
 - `buildNftTransfer({ recipient, amount, collection, token })`
 - `buildNftMint({ recipient, amount, collection, token })`
 - `buildNftCreateCollection({ collection, soulbound? })`
-- `createContract(abi).fn(params)` - generic ABI-driven builder
+- `createContract(abi).fn(params)` - generic ABI-driven builder; `.connect(privateKey)` signs
 - `buildContractCall(abi, fn, params)` - lower-level ABI-driven builder
 
 ### Staking (LockupVault)
 
-Amadeus staking is the `LockupVault` contract (`bic:lockup_vault:`): AMA locked for a tier duration,
-backing a validator and earning a locked-in APY. Not to be confused with `Lockup` (vesting) or
-`LockupPrime` (points).
+- `sdk.staking.getPosition`, `getVaults`, `getAllVaults`, `getValidatorCommissions`, `getCurrentEpoch`
+- Key builders: `buildOwnerVaultsKeyPrefix(publicKey)`, `buildAllVaultsKeyPrefix()`, `buildVaultKey(publicKey, index)`, `buildAllValidatorCommissionsKeyPrefix()`
+- Parsers: `parseLockupVaultEntries`, `parseValidatorCommissions`, `summarizeLockupVaults`
+- Helpers and constants: `flatToAma`, `epochFromHeight`, `EPOCH_INTERVAL` (100,000 blocks), `MIN_VAULT_AMOUNT_FLAT` (1,000 AMA), `VALIDATOR_MIN_STAKE_FLAT` (1,000,000 AMA), `UNLOCK_PERIOD_EPOCHS` (37 epochs, 21 days), `LOCKUP_VAULT_TIERS` (`og`, `3m`, `6m`, `12m`)
 
-```ts
-const position = await sdk.staking.getPosition('5Kd3N...')
+### Validation, Formatting, Explorer and Errors
 
-position.totalStaked // AMA staked = principal + yield compounded into the vaults
-position.totalAccrued // yield compounded so far
-position.weightedApyPercent // stake-weighted average APY
-position.vaultCount // how many vaults
-position.nextMatureEpoch // when the soonest lock expires
-position.vaults // per-vault detail (tier, amount, APY, validator, maturity)
-```
+- `validateAddress`, `isValidAddress`, `validateSeed`, `isValidSeed`, `validateAmount`, `isValidAmount`, `validatePassword`, `validateTokenSymbol` - return `{ valid: true }` or `{ valid: false, error }` (the `is*` forms return a boolean)
+- `formatNumber`, `formatAMAAmount`, `formatBalance`, `formatBalanceWithPrivacy`, `formatShortAddress`
+- `makeTransactionUrl(txHash, baseUrl?)`, `makeAddressUrl(address, baseUrl?)`, `makeExplorerUrl(type, id, baseUrl?)` - default to the mainnet explorer
+- `getValidationErrorMessage(code)`, `getExecutionErrorMessage(code)`, `getTransactionErrorMessage(code)` - human-readable messages for node error codes
 
-- `sdk.staking.getPosition(pk, opts?)` — vaults plus rolled-up totals
-- `sdk.staking.getVaults(pk, opts?)` — just the vaults
-- `sdk.staking.getAllVaults(opts?)` — every vault on the chain (explorer-style views)
-- `sdk.staking.getValidatorCommissions(opts?)` — commission per validator, epoch-resolved
-- `sdk.staking.getCurrentEpoch()` — epoch from the chain tip
+### Full documentation
 
-Pass `{ currentEpoch }` across several calls so they resolve against one epoch and skip the extra
-round trip. The building blocks are exported too, for callers that own their own HTTP layer:
-`buildOwnerVaultsKeyPrefix`, `readAllPrefixPages`, `prefixPagePath`, `decodeContractStatePage`,
-`decodeContractState`, `parseLockupVaultEntries`, `summarizeLockupVaults`, `epochFromHeight`,
-`flatToAma`.
-
-`get_prefix` answers in pages of `{ rows, cursor }` (at most 1,000 rows each); fetch the next page
-with `?cursor=<cursor>` until the cursor is `null`. `readAllPrefixPages(fetchPage)` does that loop,
-and throws on a shape it does not recognise instead of reading it as empty.
-
-Amounts are atomic `bigint` (`*Flat`) so nothing is lost to float rounding — real positions exceed
-`2^53` atomic units. Use `flatToAma()` or the pre-computed `number` fields.
-
-### Full API Reference
-
-For complete documentation including request/response types, error handling, and end-to-end examples, see [docs.ama.one/sdk](https://docs.ama.one/sdk/1.-introduction.md).
+Guides and end-to-end examples: [docs.ama.one/sdk](https://docs.ama.one/sdk/1.-introduction).
 
 ## Examples
 
-See the [`examples/`](./examples/) directory for comprehensive usage examples:
+See the [`examples/`](./examples/) directory:
 
 - **Basic Usage** - SDK initialization, key generation, queries
-- **Transaction Flow** - Complete transaction building and submission flow
-- **API Usage** - All API endpoints demonstrated
+- **Transaction Flow** - Building and submitting transactions
+- **API Usage** - The API modules
+- **Staking** - Reading a LockupVault position
 
 ```bash
-# Run examples
 npm run example:basic
 npm run example:tx
 npm run example:api
+npm run example:staking
 ```
 
 ## Testing
-
-The SDK includes comprehensive test coverage:
 
 ```bash
 # Run tests
@@ -731,13 +883,16 @@ This package is written in TypeScript and includes full type definitions. All ex
 
 ## Error Handling
 
-All errors are thrown as `AmadeusSDKError` instances with descriptive messages:
+API calls and input validation throw `AmadeusSDKError`:
 
 ```typescript
 import { AmadeusSDK, AmadeusSDKError } from '@amadeus-protocol/sdk'
 
+const sdk = new AmadeusSDK()
+
 try {
-	const balance = await sdk.wallet.getBalance('invalid')
+	const { balance } = await sdk.wallet.getBalance('5Kd3N...', 'AMA')
+	console.log(balance.float)
 } catch (error) {
 	if (error instanceof AmadeusSDKError) {
 		console.error('SDK Error:', error.message)
@@ -746,6 +901,20 @@ try {
 	}
 }
 ```
+
+| Situation                                          | `message`                      | `status`    |
+| -------------------------------------------------- | ------------------------------ | ----------- |
+| The node answers with an error code                | the code, e.g. `invalid_epoch` | `400`       |
+| The node answers `not_found` in a 200 body         | `Resource not found`           | `404`       |
+| HTTP error status (e.g. an unknown hash or height) | `HTTP <status>: <error>`       | the status  |
+| Timeout                                            | `Request timeout after <ms>ms` | `408`       |
+| `sdk.cancel()`                                     | `Request cancelled`            | `0`         |
+| Network failure                                    | `Request failed: <reason>`     | `0`         |
+| Invalid argument (e.g. a malformed Base58 address) | a schema validation message    | `undefined` |
+
+Local helpers that do not call the node (key derivation, `TransactionBuilder` without a key,
+`resolveCandidateForAddress` with an invalid phrase, `decryptWithPassword`) throw a plain `Error`,
+and so does `sdk.staking.*` for a public key that is not 48-byte Base58.
 
 ## License
 
