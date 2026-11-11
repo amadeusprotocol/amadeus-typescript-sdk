@@ -204,12 +204,12 @@ To create an account from a recovery phrase, see
 
 ### Transaction Building
 
-`TransactionBuilder` and `createContract(...).connect(...)` sign for **mainnet**. To sign for
-testnet, see [Networks and testnet](#networks-and-testnet).
+`TransactionBuilder` and `createContract(...).connect(...)` sign for **mainnet** by default. To sign
+for testnet, see [Networks and testnet](#networks-and-testnet).
 
 On mainnet (node 1.6.5) the `Lockup`, `LockupPrime` and `Nft` built-in contracts are disabled: a
 call to them is included in an entry, but its receipt fails with `invalid_bic_action`. They run on
-testnet only, so sign those calls with `signContractCall(seed, call, NetworkType.TESTNET)`.
+testnet only, so sign those calls for `NetworkType.TESTNET`.
 
 #### TransactionBuilder
 
@@ -271,20 +271,19 @@ The convenience methods `lockupPrimeLock({ amount, tier })` (amount in AMA), `lo
 The `Nft` built-in contract has dedicated builder methods. NFT amounts are integer counts, **not**
 AMA atomic units.
 
-`Nft` runs on testnet only (see above), and these builder methods sign for mainnet. In node 1.6.5,
-`Nft.create_collection` and `Nft.mint` also take a single VecPack-encoded map argument, while
-`buildNftCreateCollection` and `buildNftMint` send positional arguments, so even a testnet-signed
-call fails with `invalid_args`. `Nft.transfer` takes the positional arguments the SDK sends.
+`Nft` runs on testnet only (see above), so build with `{ network: NetworkType.TESTNET }`.
+`Nft.create_collection` and `Nft.mint` take a single VecPack-encoded map argument, which these
+methods send; `Nft.transfer` takes positional arguments.
 
 ```typescript
-import { TransactionBuilder } from '@amadeus-protocol/sdk'
+import { NetworkType, TransactionBuilder } from '@amadeus-protocol/sdk'
 
-const builder = new TransactionBuilder('5Kd3N...')
+const builder = new TransactionBuilder('5Kd3N...', { network: NetworkType.TESTNET })
 
 // Create a collection (the caller becomes its owner)
 const created = builder.nftCreateCollection({ collection: 'AGENTIC', soulbound: false })
 
-// Mint tokens (collection owner only)
+// Mint tokens (collection admins only)
 const minted = builder.nftMint({
 	recipient: '5Kd3N...',
 	amount: 10,
@@ -451,9 +450,11 @@ console.log('Submitted', hash, '- testnet AMA:', TESTNET_FAUCET_URL)
 | Mainnet | `https://mainnet-rpc.ama.one/api` | `https://explorer.ama.one`         |
 | Testnet | `https://testnet-rpc.ama.one/api` | `https://testnet.explorer.ama.one` |
 
-`TransactionBuilder`, `TransactionBuilder.signCall()` and `createContract(abi).connect(key)` always
-sign with the mainnet domain, and a testnet node rejects their output with `invalid_signature`.
-For testnet use `signContractCall(seed, call, NetworkType.TESTNET)`,
+Everything signs with the mainnet domain by default, and a testnet node rejects that with
+`invalid_signature`. For testnet use `new TransactionBuilder(seed, { network: NetworkType.TESTNET })`,
+`TransactionBuilder.signCall(seed, call, NetworkType.TESTNET)`,
+`createContract(abi).connect(seed, NetworkType.TESTNET)`,
+`signContractCall(seed, call, NetworkType.TESTNET)`,
 `buildAndSignRaw(pk, sk, contract, method, args, NetworkType.TESTNET)` or
 `signUnsigned(unsignedTx, sk, NetworkType.TESTNET)`. `txDstForNetwork(network)` returns the tag.
 The testnet faucet (`TESTNET_FAUCET_URL`) gives 100 AMA per claim, once every 24 hours per IP.
@@ -690,7 +691,9 @@ in [docs/GUIDE.md](./docs/GUIDE.md). The summary below lists every export group.
 - `AMA_TOKEN_DECIMALS`: Decimal places (9)
 - `AMA_TOKEN_DECIMALS_MULTIPLIER`: Multiplier for conversions (10^9)
 - `MIN_TRANSFERABLE_AMOUNT`: Smallest amount in AMA (1 atomic unit)
-- `AMA_TRANSFER_FEE`: Flat fee for a standard transfer, in AMA (0.02)
+- `AMA_TRANSFER_FEE`: Conservative balance reserve for a standard transfer, in AMA (0.02). Not
+  a flat fee: the chain locks a 0.01 AMA budget per transaction, charges actual usage (well under
+  0.01 AMA for a transfer) and refunds the rest
 - `EXPLORER_URL`: Default explorer URL (`https://explorer.ama.one`)
 - `NODE_API_URL`: Default node API URL (`https://mainnet-rpc.ama.one/api`)
 - `DEFAULT_TIMEOUT`: Default request timeout in ms (30000)
@@ -777,8 +780,8 @@ in [docs/GUIDE.md](./docs/GUIDE.md). The summary below lists every export group.
 
 ### Transaction Building
 
-- `TransactionBuilder` - Class for building and signing transactions (mainnet signing domain)
-    - **Constructor:** `new TransactionBuilder(privateKey?: string)` - Base58 seed used by the instance methods
+- `TransactionBuilder` - Class for building and signing transactions (mainnet signing domain by default)
+    - **Constructor:** `new TransactionBuilder(privateKey?: string, options?: { network?: NetworkType })` - Base58 seed used by the instance methods; `network` sets the signing domain
     - **ABI-driven:**
         - `contract(abi)` - Typed, signer-bound contract; each ABI function builds and signs in one step
     - **Generic instance methods:**
@@ -792,14 +795,14 @@ in [docs/GUIDE.md](./docs/GUIDE.md). The summary below lists every export group.
         - `transfer({ recipient, amount, symbol }): BuildTransactionResult`
     - **NFT (Nft contract):**
         - `nftTransfer({ recipient, amount, collection, token }): BuildTransactionResult`
-        - `nftMint({ recipient, amount, collection, token }): BuildTransactionResult`
-        - `nftCreateCollection({ collection, soulbound? }): BuildTransactionResult`
+        - `nftMint({ recipient, amount, collection, token, soulbound? }): BuildTransactionResult`
+        - `nftCreateCollection({ collection, soulbound?, nonfungible? }): BuildTransactionResult`
     - **Lockup / LockupPrime convenience methods:**
         - `lockupUnlock({ vaultIndex }): BuildTransactionResult`
         - `lockupPrimeLock({ amount, tier }): BuildTransactionResult` (amount in AMA)
         - `lockupPrimeUnlock({ vaultIndex }): BuildTransactionResult`
         - `lockupPrimeDailyCheckin({ vaultIndex }): BuildTransactionResult`
-    - **Static methods:** `build`, `sign`, `buildAndSign`, `buildTransfer`, `signCall`, `buildFromCall`, `buildAndSignCall`, `buildSignedTransfer`, `buildSignedNft{Transfer,Mint,CreateCollection}`, `buildSignedLockupUnlock`, `buildSignedLockupPrime{Lock,Unlock,DailyCheckin}`
+    - **Static methods:** `build`, `sign`, `buildAndSign`, `buildTransfer`, `signCall`, `buildFromCall`, `buildAndSignCall`, `buildSignedTransfer`, `buildSignedNft{Transfer,Mint,CreateCollection}`, `buildSignedLockupUnlock`, `buildSignedLockupPrime{Lock,Unlock,DailyCheckin}`; the signing ones take an optional last `network`
 
 ### Signing Primitives
 
@@ -825,9 +828,9 @@ Builders that return a `ContractCall` (`{ contract, method, args }`):
 
 - `buildCoinTransfer({ recipient, amount, symbol })`
 - `buildNftTransfer({ recipient, amount, collection, token })`
-- `buildNftMint({ recipient, amount, collection, token })`
-- `buildNftCreateCollection({ collection, soulbound? })`
-- `createContract(abi).fn(params)` - generic ABI-driven builder; `.connect(privateKey)` signs
+- `buildNftMint({ recipient, amount, collection, token, soulbound? })`
+- `buildNftCreateCollection({ collection, soulbound?, nonfungible? })`
+- `createContract(abi).fn(params)` - generic ABI-driven builder; `.connect(privateKey, network?)` signs
 - `buildContractCall(abi, fn, params)` - lower-level ABI-driven builder
 
 ### Staking (LockupVault)

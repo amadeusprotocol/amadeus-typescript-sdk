@@ -218,10 +218,10 @@ for (const tx of txs) {
 
 Transactions sent or received by an account. `filters` takes `limit`, `sort`, `cursor`,
 `contract`, `function` and `type` (`TransactionEventType.SENT` or `TransactionEventType.RECEIVED`).
-The node returns full transaction records (the same shape as `getByFilter`, with
-`metadata.tx_event` set to `'sent'` or `'recv'`); the declared `TransactionEvent` element type
-does not match that. The public RPC also answered `cursor: null` on full pages, so page with
-`getByFilter` instead.
+Returns `{ cursor, txs }`: `txs` are full `Transaction` records (the same shape as `getByFilter`)
+with `metadata.tx_event` set to `'sent'` or `'recv'`. The node only pages when `type` is set;
+without it, sent and received are merged and `cursor` is always `null`. Pass `cursor` back for the
+next page (the SDK sends it as `cursor_b58`).
 
 #### `getKpi(): Promise<GetKpiResponse>`
 
@@ -230,8 +230,9 @@ Returns `{ kpi }`: `ama_burned`, `fees_paid`, `active_validator_keys`, `active_p
 
 #### `getMetricsBlock(height: number): Promise<MetricsBlockResponse>`
 
-Rooted transaction evidence for one block. Requires a node that serves
-`/api/chain/metrics/block/{height}`; node 1.6.5 and the public RPC answer `404 not_found`.
+**Deprecated.** Rooted transaction evidence for one block. Requires a node that serves
+`/api/chain/metrics/block/{height}`; the node and the public RPC do not, and the resulting 404
+is thrown as an `AmadeusSDKError` that says the method is deprecated.
 See [PUBLIC-METRICS.md](./PUBLIC-METRICS.md).
 
 ### Wallet API (`sdk.wallet`)
@@ -360,15 +361,16 @@ richlist.slice(0, 10).forEach((holder, index) => {
 
 Runs a function read-only against the chain tip; the node rolls back any writes. `params` is
 `{ contract, function, args?, pk? }`, where `pk` is an optional 48-byte caller key. Returns
-`{ success, result, logs }`. The node runs a deployed contract only when `contract` is its raw
-48-byte public key; `view()` sends the `contract` string as UTF-8, so a name or a Base58 address
-goes to the built-in contracts instead. There, a function that is not a built-in action answers
-`{ success: false, result: 'invalid_bic_action' }` (live for `Coin` and `LockupPrime`).
+`{ success, result, logs }`. `contract` is a deployed contract's Base58 address or its 48-byte
+public key; the SDK sends the raw 48 bytes, which is what makes the node run the deployed code.
+Built-in contracts (`Coin`, `LockupPrime`, ...) have no view functions: a name is sent as is, an
+unknown function answers `{ success: false, result: 'invalid_bic_action' }`, and a real action
+such as `Coin.transfer` fails with `exec_cannot_write_during_view` (or an args error).
 
 #### `validateBytecode(bytecode: Uint8Array | ArrayBuffer): Promise<ValidateBytecodeResponse>`
 
-Posts to `/api/contract/validate_bytecode`, which node 1.6.5 and the public RPC do not serve:
-the call throws `AmadeusSDKError` (`HTTP 404: not_found`).
+**Deprecated.** The node has no `/api/contract/validate_bytecode` route, so this always throws
+`AmadeusSDKError` without sending a request.
 
 ### Epoch API (`sdk.epoch`)
 
@@ -423,18 +425,29 @@ nodes.forEach((node) => console.log(node.pk, node.version, node.rooted_height))
 
 ### Proof API (`sdk.proof`)
 
-#### `getContractStateProof(key: Uint8Array | string, value?: Uint8Array | string): Promise<ContractStateProof>`
+#### `getContractStateProof(key: Uint8Array | string): Promise<ContractStateProof>`
 
-Merkle proof for a contract state key (bytes, or a Base58 string). On node 1.6.5 the body is
-`{ entry_height, entry_hash, root_contractstate, proofs: [{ key, namespace, proof }] }`, which
-differs from the declared `ContractStateProof` type, so read the fields you need defensively.
-Passing `value` requests `/api/proof/contractstate/{key}/{value}`, which node 1.6.5 does not
-serve.
+HB-SMT proof for a contract state key (bytes, or a Base58 string), taken at the tip. Returns
+`{ entry_height, entry_hash, root_contractstate, proofs: [{ key, namespace, proof }] }`, where
+`proof` is `{ root, siblings, terminus }` and `terminus` is `'empty'` when the key is absent.
+The deprecated `value` argument always throws: the node no longer verifies values.
+
+#### `getValidatorRecord(height: number): Promise<ValidatorRecordProof>`
+
+The validator set record for `height`, proven against the state root of block `height - 1`:
+`{ entry_height, entry_hash, key, value, proof }`. Records exist only at heights where the set was
+written (epoch starts such as 90500000); other heights throw `AmadeusSDKError` (404).
+
+#### `getBlockProof(height: number, options?: { atHeight?: number }): Promise<BlockProof>`
+
+MMR inclusion proof for the canonical block at `height`, against the latest rooted MMR or the one
+committed by the header at `atHeight`: `{ block_hash, claim, height, at_height, at_hash,
+chain_id, root_chain, peak_pos, siblings, other_peaks }`.
 
 #### `getValidators(entryHash: string): Promise<ProofValidators>`
 
-Requests `/api/proof/validators/{entryHash}`, which node 1.6.5 and the public RPC do not serve
-(`HTTP 404: not_found`).
+**Deprecated.** The node has no `/api/proof/validators` route, so this always throws; use
+`getValidatorRecord(height)`.
 
 ### Staking API (`sdk.staking`)
 
@@ -484,8 +497,9 @@ Client for the separately deployed public activity metrics service. It is not pa
 
 ## TransactionBuilder
 
-Builds and signs transactions. Every signing method uses the **mainnet** signing domain; to sign
-for testnet, use the [signing primitives](#signing-primitives) with `NetworkType.TESTNET`.
+Builds and signs transactions for mainnet by default. Pass `{ network: NetworkType.TESTNET }` to
+the constructor, or `NetworkType.TESTNET` as the last argument of a static signing method, to
+sign for testnet.
 
 On mainnet (node 1.6.5) the `Lockup`, `LockupPrime` and `Nft` built-in contracts are disabled: a
 call to them is included, but its receipt fails with `invalid_bic_action`. They run on testnet
@@ -495,11 +509,13 @@ signing.
 ### Constructor
 
 ```typescript
-new TransactionBuilder(privateKey?: string)
+new TransactionBuilder(privateKey?: string, options?: { network?: NetworkType })
 ```
 
 - `privateKey` (string, optional): Base58 64-byte seed. Instance methods that sign need it,
   unless you pass the keys explicitly.
+- `options.network` (`NetworkType`, optional): signing domain for every instance signature
+  (default mainnet).
 
 All signing methods return `BuildTransactionResult`: `{ txHash: string, txPacked: Uint8Array }`.
 Build methods return `UnsignedTransactionWithHash`: `{ tx, hash }`.
@@ -522,22 +538,22 @@ const { txHash, txPacked } = builder
 
 ### Instance methods
 
-| Method                                                       | Returns                       |
-| ------------------------------------------------------------ | ----------------------------- |
-| `build(contract, method, args, signerPk?)`                   | `UnsignedTransactionWithHash` |
-| `sign(unsignedTx, signerSk?)`                                | `BuildTransactionResult`      |
-| `buildAndSign(contract, method, args, signerPk?, signerSk?)` | `BuildTransactionResult`      |
-| `buildFromCall(call)`                                        | `UnsignedTransactionWithHash` |
-| `buildAndSignCall(call)`                                     | `BuildTransactionResult`      |
-| `buildTransfer({ recipient, amount, symbol })`               | `UnsignedTransactionWithHash` |
-| `transfer({ recipient, amount, symbol })`                    | `BuildTransactionResult`      |
-| `nftTransfer({ recipient, amount, collection, token })`      | `BuildTransactionResult`      |
-| `nftMint({ recipient, amount, collection, token })`          | `BuildTransactionResult`      |
-| `nftCreateCollection({ collection, soulbound? })`            | `BuildTransactionResult`      |
-| `lockupPrimeLock({ amount, tier })`                          | `BuildTransactionResult`      |
-| `lockupPrimeUnlock({ vaultIndex })`                          | `BuildTransactionResult`      |
-| `lockupPrimeDailyCheckin({ vaultIndex })`                    | `BuildTransactionResult`      |
-| `lockupUnlock({ vaultIndex })`                               | `BuildTransactionResult`      |
+| Method                                                          | Returns                       |
+| --------------------------------------------------------------- | ----------------------------- |
+| `build(contract, method, args, signerPk?)`                      | `UnsignedTransactionWithHash` |
+| `sign(unsignedTx, signerSk?)`                                   | `BuildTransactionResult`      |
+| `buildAndSign(contract, method, args, signerPk?, signerSk?)`    | `BuildTransactionResult`      |
+| `buildFromCall(call)`                                           | `UnsignedTransactionWithHash` |
+| `buildAndSignCall(call)`                                        | `BuildTransactionResult`      |
+| `buildTransfer({ recipient, amount, symbol })`                  | `UnsignedTransactionWithHash` |
+| `transfer({ recipient, amount, symbol })`                       | `BuildTransactionResult`      |
+| `nftTransfer({ recipient, amount, collection, token })`         | `BuildTransactionResult`      |
+| `nftMint({ recipient, amount, collection, token, soulbound? })` | `BuildTransactionResult`      |
+| `nftCreateCollection({ collection, soulbound?, nonfungible? })` | `BuildTransactionResult`      |
+| `lockupPrimeLock({ amount, tier })`                             | `BuildTransactionResult`      |
+| `lockupPrimeUnlock({ vaultIndex })`                             | `BuildTransactionResult`      |
+| `lockupPrimeDailyCheckin({ vaultIndex })`                       | `BuildTransactionResult`      |
+| `lockupUnlock({ vaultIndex })`                                  | `BuildTransactionResult`      |
 
 - `args` for `build`/`buildAndSign` are passed as is: the `Coin` contract expects the recipient
   as raw bytes (`fromBase58(...)`) and the amount as an atomic string (`toAtomicAma(...).toString()`).
@@ -607,19 +623,20 @@ The lower-level function behind `createContract`.
 - `LOCKUP_PRIME_ABI`: `LockupPrime`: `lock(amount, tier)`, `unlock(vaultIndex)`,
   `daily_checkin(vaultIndex)`; `amount` is atomic, tiers `7d`, `30d`, `90d`, `180d`, `365d`
 - `NFT_ABI`: `Nft`: `transfer(receiver, amount, collection, token)`,
-  `mint(receiver, amount, collection, token)`, `create_collection(collection, soulbound)`
+  `mint(receiver, amount, collection, token)`, `create_collection(collection, soulbound)`; the
+  node takes the last two as one map, so build them with `buildNftMint`/`buildNftCreateCollection`
 
 ### Call builders
 
 - `buildCoinTransfer({ recipient, amount, symbol })`: amount in AMA, recipient Base58
 - `buildNftTransfer({ recipient, amount, collection, token })`
-- `buildNftMint({ recipient, amount, collection, token })`: collection owner only
-- `buildNftCreateCollection({ collection, soulbound? })`: tokens of a soulbound collection cannot
-  be transferred
+- `buildNftMint({ recipient, amount, collection, token, soulbound? })`: collection admins only
+- `buildNftCreateCollection({ collection, soulbound?, nonfungible? })`: tokens of a soulbound
+  collection cannot be transferred; a nonfungible one mints each token once with amount 1
 
-In node 1.6.5, `Nft.create_collection` and `Nft.mint` take a single VecPack-encoded map argument,
-while `buildNftCreateCollection`, `buildNftMint` and `NFT_ABI` send positional arguments, so the
-node fails those two calls with `invalid_args`. `Nft.transfer` takes positional arguments.
+`Nft.create_collection` and `Nft.mint` take a single VecPack-encoded map argument, which these
+builders produce. `createContract(NFT_ABI)` sends positional arguments, so use the builders for
+those two calls. `Nft.transfer` takes positional arguments.
 
 ## Signing Primitives
 
@@ -875,7 +892,12 @@ Unknown codes fall back to a generic message that includes the code.
 | `AMA_TOKEN_DECIMALS`             | `9`                               |
 | `AMA_TOKEN_DECIMALS_MULTIPLIER`  | `10 ** 9`                         |
 | `MIN_TRANSFERABLE_AMOUNT`        | `1e-9` AMA (one atomic unit)      |
-| `AMA_TRANSFER_FEE`               | `0.02` AMA                        |
+| `AMA_TRANSFER_FEE`               | `0.02` AMA (reserve, see below)   |
+
+`AMA_TRANSFER_FEE` is a conservative amount for wallets to hold back, not what the chain charges.
+Each transaction locks a 0.01 AMA budget (plus any attached gas) against the signer's balance, pays
+for its size, execution and new state out of it, and gets the unused part refunded. A plain transfer
+costs a fraction of 0.01 AMA.
 
 Staking constants (`EPOCH_INTERVAL`, `MIN_VAULT_AMOUNT_FLAT`, `VALIDATOR_MIN_STAKE_FLAT`,
 `UNLOCK_PERIOD_EPOCHS`, `LOCKUP_VAULT_TIERS`, ...) are exported alongside the staking helpers.

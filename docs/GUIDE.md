@@ -169,9 +169,10 @@ to wait for finality, for example before crediting an off-chain ledger.
 ### Networks
 
 Mainnet and testnet sign under different domain separation tags, so a transaction signed for one
-is rejected on the other with `invalid_signature`. `TransactionBuilder`,
-`TransactionBuilder.signCall()` and `createContract(abi).connect(key)` sign for mainnet only.
-For testnet, use the network-aware primitives:
+is rejected on the other with `invalid_signature`. Everything signs for mainnet by default. For
+testnet, pass the network: `new TransactionBuilder(key, { network: NetworkType.TESTNET })`,
+`TransactionBuilder.signCall(key, call, NetworkType.TESTNET)`,
+`createContract(abi).connect(key, NetworkType.TESTNET)`, or the network-aware primitives:
 
 ```typescript
 import {
@@ -548,12 +549,13 @@ if (!result.valid) console.error(result.error)
 
 #### `not_enough_tx_exec_balance` or `not_enough_txpool_balance`
 
-**Cause:** The account's AMA balance cannot cover the transaction's execution budget
-(`not_enough_tx_exec_balance`), or that plus the budgets of its transactions already waiting in
-the pool (`not_enough_txpool_balance`).
+**Cause:** The account's AMA balance cannot cover the transaction's budget, 0.01 AMA plus any
+attached gas (`not_enough_tx_exec_balance`), or that plus the budgets of its transactions already
+waiting in the pool (`not_enough_txpool_balance`).
 
-**Solution:** Check the balance before submitting. A standard transfer costs `AMA_TRANSFER_FEE`
-(0.02 AMA):
+**Solution:** Check the balance before submitting. A transfer needs its amount on top of that
+budget; the chain charges only what the transaction uses and refunds the rest. Keep
+`AMA_TRANSFER_FEE` (0.02 AMA) free as a conservative margin:
 
 ```typescript
 import { AMA_TRANSFER_FEE, AmadeusSDK } from '@amadeus-protocol/sdk'
