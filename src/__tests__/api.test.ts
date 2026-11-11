@@ -9,8 +9,12 @@ import {
 	PeerAPI,
 	ProofAPI
 } from '../api'
-import { AmadeusSDKError } from '../types'
+import { AmadeusSDKError, TransactionEventType } from '../types'
 import { generateKeypair } from '../crypto'
+import { fromBase58, toBase58 } from '../encoding'
+import { decode } from '../serialization'
+
+const textOf = (bytes: unknown): string => new TextDecoder().decode(bytes as Uint8Array)
 
 describe('API Modules', () => {
 	let mockClient: AmadeusClient
@@ -27,6 +31,34 @@ describe('API Modules', () => {
 	})
 
 	describe('ChainAPI', () => {
+		it('sends the Base58 account events cursor as cursor_b58', async () => {
+			const api = new ChainAPI(mockClient)
+			const account = generateKeypair().publicKey
+			vi.mocked(mockClient.get).mockResolvedValue({ cursor: null, txs: [] })
+
+			await api.getTransactionEventsByAccount(account, {
+				type: TransactionEventType.SENT,
+				cursor: 'PAzKk2'
+			})
+			await api.getTransactionEventsByAccount(account, { cursor_b58: 'PAzKk3' })
+
+			expect(mockClient.get).toHaveBeenNthCalledWith(
+				1,
+				`/api/chain/tx_events_by_account/${account}`,
+				{
+					type: 'sent',
+					cursor_b58: 'PAzKk2'
+				}
+			)
+			expect(mockClient.get).toHaveBeenNthCalledWith(
+				2,
+				`/api/chain/tx_events_by_account/${account}`,
+				{
+					cursor_b58: 'PAzKk3'
+				}
+			)
+		})
+
 		it('gets chain tip', async () => {
 			const api = new ChainAPI(mockClient)
 			const mockData = { entry: { height: 100, hash: 'test' } }
@@ -95,15 +127,48 @@ describe('API Modules', () => {
 	})
 
 	describe('ContractAPI', () => {
-		it('validates bytecode', async () => {
+		it('validateBytecode throws a deprecation error without calling the missing route', async () => {
 			const api = new ContractAPI(mockClient)
-			const mockData = { error: 'ok' }
-			const bytecode = new Uint8Array([1, 2, 3])
-			vi.mocked(mockClient.post).mockResolvedValueOnce(mockData)
 
-			const result = await api.validateBytecode(bytecode)
+			await expect(api.validateBytecode(new Uint8Array([1, 2, 3]))).rejects.toThrow(
+				/validateBytecode is deprecated/
+			)
+			expect(mockClient.post).not.toHaveBeenCalled()
+		})
 
-			expect(result).toEqual(mockData)
+		it('view sends a Base58 contract address as its 48 raw bytes', async () => {
+			const api = new ContractAPI(mockClient)
+			const contractPk = generateKeypair().publicKey
+			vi.mocked(mockClient.post).mockResolvedValueOnce({
+				success: true,
+				result: '7',
+				logs: []
+			})
+
+			await api.view({ contract: contractPk, function: 'get', args: ['k'] })
+
+			const [path, body] = vi.mocked(mockClient.post).mock.calls[0]
+			expect(path).toBe('/api/contract/view')
+			const sent = decode(body as Uint8Array) as Map<Uint8Array, unknown>
+			const contract = [...sent].find(([key]) => textOf(key) === 'contract')?.[1]
+			expect(contract).toEqual(fromBase58(contractPk))
+			expect((contract as Uint8Array).length).toBe(48)
+		})
+
+		it('view passes raw contract bytes and built-in names through unchanged', async () => {
+			const api = new ContractAPI(mockClient)
+			const contractBytes = fromBase58(generateKeypair().publicKey)
+			vi.mocked(mockClient.post).mockResolvedValue({ success: false, result: '', logs: [] })
+
+			await api.view({ contract: contractBytes, function: 'get' })
+			await api.view({ contract: 'LockupPrime', function: 'lock' })
+
+			const contracts = vi.mocked(mockClient.post).mock.calls.map(([, body]) => {
+				const sent = decode(body as Uint8Array) as Map<Uint8Array, unknown>
+				return [...sent].find(([key]) => textOf(key) === 'contract')?.[1]
+			})
+			expect(contracts[0]).toEqual(contractBytes)
+			expect(textOf(contracts[1] as Uint8Array)).toBe('LockupPrime')
 		})
 
 		it('validates bytecode input', async () => {
@@ -132,6 +197,15 @@ describe('API Modules', () => {
 	})
 
 	describe('PeerAPI', () => {
+		it('returns a null anr for an unknown public key', async () => {
+			const api = new PeerAPI(mockClient)
+			vi.mocked(mockClient.get).mockResolvedValueOnce({ anr: null })
+
+			const { anr } = await api.getANRByPk(generateKeypair().publicKey)
+
+			expect(anr).toBeNull()
+		})
+
 		it('gets nodes', async () => {
 			const api = new PeerAPI(mockClient)
 			const mockData = { nodes: [] }
@@ -144,25 +218,72 @@ describe('API Modules', () => {
 	})
 
 	describe('ProofAPI', () => {
-		it('gets validator proof', async () => {
+		it('getValidators throws a deprecation error without calling the missing route', async () => {
+			const api = new ProofAPI(mockClient)
+
+			await expect(api.getValidators(generateKeypair().publicKey)).rejects.toThrow(
+				/getValidators is deprecated/
+			)
+			expect(mockClient.get).not.toHaveBeenCalled()
+		})
+
+		it('gets a validator record proof by height', async () => {
 			const api = new ProofAPI(mockClient)
 			const mockData = {
-				validators: [
-					{
-						entry_hash: 'test-hash',
-						mutations_hash: 'test-mutations',
-						aggsig: 'test-sig',
-						signers: ['signer1', 'signer2'],
-						score: 0.95
-					}
-				]
+				entry_height: 99,
+				entry_hash: 'hash',
+				key: 'key',
+				value: 'value',
+				proof: { root: 'root', siblings: ['sibling'], terminus: 'empty' }
 			}
-			const keypair = generateKeypair()
 			vi.mocked(mockClient.get).mockResolvedValueOnce(mockData)
 
-			const result = await api.getValidators(keypair.publicKey)
+			expect(await api.getValidatorRecord(100)).toEqual(mockData)
+			expect(mockClient.get).toHaveBeenCalledWith('/api/proof/validator_record/100')
+			await expect(api.getValidatorRecord(-1)).rejects.toThrow()
+		})
 
-			expect(result).toEqual(mockData)
+		it('gets a block proof, optionally at a given MMR height', async () => {
+			const api = new ProofAPI(mockClient)
+			vi.mocked(mockClient.get).mockResolvedValue({ height: 100 })
+
+			await api.getBlockProof(100)
+			await api.getBlockProof(100, { atHeight: 200 })
+
+			expect(mockClient.get).toHaveBeenNthCalledWith(1, '/api/proof/block/100', {
+				at_height: undefined
+			})
+			expect(mockClient.get).toHaveBeenNthCalledWith(2, '/api/proof/block/100', {
+				at_height: 200
+			})
+			await expect(api.getBlockProof(1.5)).rejects.toThrow()
+		})
+
+		it('gets a contract state proof by Base58-encoding the key', async () => {
+			const api = new ProofAPI(mockClient)
+			const key = new TextEncoder().encode('bic:epoch:segment_vr_hash')
+			vi.mocked(mockClient.get).mockResolvedValueOnce({ proofs: [] })
+
+			await api.getContractStateProof(key)
+
+			expect(mockClient.get).toHaveBeenCalledWith(`/api/proof/contractstate/${toBase58(key)}`)
+		})
+
+		it('getContractStateProof with a value throws a deprecation error', async () => {
+			const api = new ProofAPI(mockClient)
+
+			await expect(api.getContractStateProof('key', 'value')).rejects.toThrow(/deprecated/)
+			expect(mockClient.get).not.toHaveBeenCalled()
+		})
+
+		it('getContractStateProof with an undefined value still fetches the proof', async () => {
+			const api = new ProofAPI(mockClient)
+			const maybeValue: Uint8Array | undefined = undefined
+			vi.mocked(mockClient.get).mockResolvedValueOnce({ proofs: [] })
+
+			await api.getContractStateProof('key', maybeValue)
+
+			expect(mockClient.get).toHaveBeenCalledWith('/api/proof/contractstate/key')
 		})
 
 		it('validates entry hash', async () => {

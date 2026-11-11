@@ -1,8 +1,8 @@
 /**
  * Coin Contract (Special Case)
  *
- * The Coin contract is a built-in native contract with no WASM ABI file.
- * It differs from WASM contracts:
+ * The Coin contract is a built-in native contract with no ABI file.
+ * It differs from deployed (RISC-V) contracts:
  * - First arg (recipient) is raw binary Uint8Array from fromBase58(), not a UTF-8 string
  * - Amount requires toAtomicAma() conversion
  *

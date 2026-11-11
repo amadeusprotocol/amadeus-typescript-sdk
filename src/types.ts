@@ -475,7 +475,8 @@ export interface Transaction {
 }
 
 /**
- * Transaction event structure
+ * @deprecated No node route returns this shape. `chain.getTransactionEventsByAccount`
+ * returns `Transaction` records with `metadata.tx_event`.
  */
 export interface TransactionEvent {
 	type: TransactionEventType
@@ -492,6 +493,7 @@ export interface TransactionFilters {
 	limit?: number
 	offset?: number
 	sort?: 'asc' | 'desc'
+	/** Base58 `cursor` from the previous page; sent to the node as `cursor_b58` */
 	cursor?: string
 	cursor_b58?: string
 	contract?: string | Contract
@@ -761,7 +763,7 @@ export interface ANRInfo {
 // ----------------------------------------------------------------------------
 
 /**
- * Validator proof node structure
+ * @deprecated Not returned by any node route.
  */
 export interface ValidatorProofNode {
 	direction: string
@@ -769,13 +771,23 @@ export interface ValidatorProofNode {
 }
 
 /**
- * Validator proof data structure
+ * @deprecated Not returned by any node route; proofs are `HbsmtProof`.
  */
 export interface ValidatorProofData {
 	root: string
 	path: string
 	hash: string
 	nodes: ValidatorProofNode[]
+}
+
+/**
+ * HB-SMT proof for one contract state key. All hashes are Base58.
+ */
+export interface HbsmtProof {
+	root: string
+	siblings: string[]
+	/** `'empty'` for an exclusion proof (the key is absent) */
+	terminus: 'empty' | { path: string; identity_hash: string; value_hash: string }
 }
 
 // ============================================================================
@@ -803,8 +815,10 @@ export interface GetByHeightResponse {
 }
 
 export interface GetTransactionEventsByAccountResponse {
-	cursor: string
-	txs: TransactionEvent[]
+	/** Base58 cursor for the next page; always `null` unless `type` is set */
+	cursor: string | null
+	/** Full transaction records, each with `metadata.tx_event` (`'sent'` or `'recv'`) */
+	txs: Transaction[]
 }
 
 export interface GetTransactionsInEntryResponse {
@@ -832,7 +846,7 @@ export interface GetTokenBalanceResponse {
 }
 
 /**
- * Query parameters for getting wallet transactions
+ * Wallet history query for app-side paging; no SDK method takes it.
  */
 export interface GetWalletTransactionsQuery {
 	address: string
@@ -846,7 +860,7 @@ export interface GetWalletTransactionsQuery {
 }
 
 /**
- * Response for getting wallet transactions
+ * Wallet history page for app-side paging; no SDK method returns it.
  */
 export interface GetWalletTransactionsResponse {
 	cursor: string
@@ -866,12 +880,8 @@ export interface GetAllBalancesResponse {
 // ----------------------------------------------------------------------------
 
 /**
- * Response from `/api/contract/validate`.
- *
- * Always returns the validation result and any logs emitted by the validator.
- * Note: the node currently returns `error: 'ok'` on success, which the SDK
- * strips — making `error` undefined when validation succeeds. Check `logs`
- * for diagnostic output regardless.
+ * @deprecated `contract.validateBytecode` always throws: the node has no bytecode
+ * validation route.
  */
 export interface ValidateBytecodeResponse {
 	/** Validation error code, if any (undefined on success after SDK strips `:ok`) */
@@ -926,7 +936,8 @@ export interface GetANRsResponse {
 }
 
 export interface GetANRByPkResponse {
-	anr: ANRInfo
+	/** `null` when the node has no ANR for that public key */
+	anr: ANRInfo | null
 }
 
 // ----------------------------------------------------------------------------
@@ -971,7 +982,7 @@ export interface SubmitAndWaitTransactionResponse {
 // ----------------------------------------------------------------------------
 
 /**
- * Validator proof response structure
+ * @deprecated `proof.getValidators` always throws: the node has no such route.
  */
 export interface ProofValidators {
 	key: string
@@ -981,15 +992,65 @@ export interface ProofValidators {
 }
 
 /**
- * Contract state proof response structure (`/api/proof/contractstate`).
- * `value` and `result` are present only when a value is supplied for verification.
+ * Proof for one key inside a `ContractStateProof`.
+ */
+export interface ContractStateKeyProof {
+	/** Contract state key (Base58) */
+	key: string
+	/** HB-SMT namespace (Base58), or `null` for keys outside `account:`, `coin:` and `bic:` */
+	namespace: string | null
+	proof: HbsmtProof
+}
+
+/**
+ * Contract state proof response (`/api/proof/contractstate/{key}`), taken at the tip.
  */
 export interface ContractStateProof {
-	namespace: string
+	entry_height: number
+	/** Hash of the entry the proof was taken at (Base58) */
+	entry_hash: string
+	/** Contract state root the proofs resolve to (Base58) */
+	root_contractstate: string
+	proofs: ContractStateKeyProof[]
+}
+
+/**
+ * Validator record proof (`/api/proof/validator_record/{height}`).
+ */
+export interface ValidatorRecordProof {
+	/** Height of the block that wrote the record (`height - 1`) */
+	entry_height: number
+	entry_hash: string
+	/** Record key and value (Base58) */
 	key: string
-	proof: ValidatorProofData
-	value?: string
-	result?: boolean
+	value: string
+	proof: HbsmtProof
+}
+
+/**
+ * Options for `proof.getBlockProof`.
+ */
+export interface BlockProofOptions {
+	/** Prove against the MMR committed by the header at this height (default: rooted tip) */
+	atHeight?: number
+}
+
+/**
+ * MMR block inclusion proof (`/api/proof/block/{height}`). Hashes are Base58.
+ */
+export interface BlockProof {
+	block_hash: string
+	/** Packed block claim (Base58), `null` below the claim fork height */
+	claim: string | null
+	height: number
+	/** MMR size proven against */
+	at_height: number
+	at_hash: string
+	chain_id: string
+	root_chain: string
+	peak_pos: number
+	siblings: string[]
+	other_peaks: string[]
 }
 
 // ----------------------------------------------------------------------------
@@ -1000,8 +1061,11 @@ export interface ContractStateProof {
  * Parameters for `/api/contract/view` (read-only on-chain function execution).
  */
 export interface ContractViewParams {
-	/** Contract name (e.g. 'Coin', 'Lockup') or Base58-encoded contract address */
-	contract: string
+	/**
+	 * Deployed contract address: Base58 string or 48-byte raw public key. A built-in name
+	 * (`'Coin'`, `'LockupPrime'`) is sent as is, but built-ins have no view functions.
+	 */
+	contract: string | Uint8Array
 	/** Function name to invoke */
 	function: string
 	/** Function args (strings or raw bytes) */

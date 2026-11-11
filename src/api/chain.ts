@@ -19,6 +19,7 @@ import type {
 	TxByFilterResponse,
 	GetKpiResponse
 } from '../types'
+import { AmadeusSDKError } from '../types'
 import { Base58HashSchema, TransactionFiltersSchema } from '../schemas'
 import { Schema } from 'effect'
 import { validate } from '../validation'
@@ -26,10 +27,26 @@ import { validate } from '../validation'
 export class ChainAPI {
 	constructor(private client: AmadeusClient) {}
 
-	/** Read canonical rooted transaction evidence; timestamps are intentionally unavailable. */
+	/**
+	 * Read canonical rooted transaction evidence; timestamps are intentionally unavailable.
+	 *
+	 * @deprecated The node has no `/api/chain/metrics/block/{height}` route. The request is
+	 *   still sent for custom nodes that serve it; a 404 is rethrown as a clear `AmadeusSDKError`.
+	 */
 	async getMetricsBlock(height: number): Promise<MetricsBlockResponse> {
 		if (!Number.isSafeInteger(height) || height < 0) throw new Error('Invalid metrics height')
-		return this.client.get<MetricsBlockResponse>(`/api/chain/metrics/block/${height}`)
+		try {
+			return await this.client.get<MetricsBlockResponse>(`/api/chain/metrics/block/${height}`)
+		} catch (error) {
+			if (error instanceof AmadeusSDKError && error.status === 404) {
+				throw new AmadeusSDKError(
+					'chain.getMetricsBlock is deprecated: this node has no /api/chain/metrics/block route',
+					404,
+					error.response
+				)
+			}
+			throw error
+		}
 	}
 
 	/**
@@ -153,18 +170,29 @@ export class ChainAPI {
 	}
 
 	/**
-	 * Get transaction events by account with filtering
+	 * Get an account's transactions with filtering
+	 *
+	 * Returns full transaction records, each tagged with `metadata.tx_event`. The node only
+	 * pages when `type` is `'sent'` or `'recv'`: without it, sent and received are merged
+	 * and `cursor` is always `null`.
 	 *
 	 * @param account - Account address (Base58 encoded)
-	 * @param filters - Optional filters for transactions
-	 * @returns Promise resolving to transaction events
+	 * @param filters - Optional filters; pass the previous `cursor` back to get the next page
+	 * @returns Promise resolving to `{ cursor, txs }`
 	 * @throws {Error} If account address is invalid
 	 *
 	 * @example
 	 * ```ts
-	 * const { txs, cursor } = await sdk.chain.getTransactionEventsByAccount('5Kd3N...', {
+	 * const page1 = await sdk.chain.getTransactionEventsByAccount('5Kd3N...', {
+	 *   type: TransactionEventType.SENT,
 	 *   limit: 10,
 	 *   sort: 'desc'
+	 * })
+	 * const page2 = await sdk.chain.getTransactionEventsByAccount('5Kd3N...', {
+	 *   type: TransactionEventType.SENT,
+	 *   limit: 10,
+	 *   sort: 'desc',
+	 *   cursor: page1.cursor ?? undefined
 	 * })
 	 * ```
 	 */
@@ -175,9 +203,12 @@ export class ChainAPI {
 		validate(Base58HashSchema, account)
 		validate(TransactionFiltersSchema, filters)
 
+		// The node reads a plain `cursor` as raw bytes; the Base58 one must go as `cursor_b58`.
+		const { cursor, ...rest } = filters
+		const query = cursor && !rest.cursor_b58 ? { ...rest, cursor_b58: cursor } : filters
 		return this.client.get<GetTransactionEventsByAccountResponse>(
 			`/api/chain/tx_events_by_account/${account}`,
-			filters as Record<string, unknown>
+			query as Record<string, unknown>
 		)
 	}
 

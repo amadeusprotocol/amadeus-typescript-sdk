@@ -17,6 +17,8 @@ import { AmadeusSDKError } from '../types'
 import { BytecodeSchema, ContractKeySchema } from '../schemas'
 import { validate } from '../validation'
 import { encode } from '../serialization'
+import { fromBase58 } from '../encoding'
+import { AMADEUS_PUBLIC_KEY_BYTE_LENGTH } from '../constants'
 import { prefixPagePath, readAllPrefixPages } from '../contract-state'
 
 export class ContractAPI {
@@ -25,19 +27,17 @@ export class ContractAPI {
 	/**
 	 * Validate contract bytecode
 	 *
+	 * @deprecated The node has no `/api/contract/validate_bytecode` route (it answers 404), so
+	 *   this always throws. Contracts are RISC-V and are checked when `Contract.deploy` runs.
 	 * @param bytecode - Contract bytecode as Uint8Array or ArrayBuffer
-	 * @returns Promise resolving to validation result
-	 * @throws {AmadeusSDKError} If bytecode is invalid or empty
-	 *
-	 * @example
-	 * ```ts
-	 * const result = await sdk.contract.validateBytecode(wasmBytecode)
-	 * ```
+	 * @throws {AmadeusSDKError} Always
 	 */
 	async validateBytecode(bytecode: Uint8Array | ArrayBuffer): Promise<ValidateBytecodeResponse> {
 		validate(BytecodeSchema, bytecode)
-		const body = bytecode instanceof ArrayBuffer ? new Uint8Array(bytecode) : bytecode
-		return this.client.post<ValidateBytecodeResponse>('/api/contract/validate_bytecode', body)
+		throw new AmadeusSDKError(
+			'contract.validateBytecode is deprecated: the node has no /api/contract/validate_bytecode route',
+			404
+		)
 	}
 
 	/**
@@ -125,8 +125,16 @@ export class ContractAPI {
 	/**
 	 * Execute a contract function in read-only (view) mode against the current chain tip.
 	 *
-	 * No transaction is created and no state is mutated. Useful for querying contract
-	 * state through the contract's own logic (e.g. computed balances, vault status).
+	 * No transaction is created and no state is mutated. Useful for querying a deployed
+	 * contract's state through its own logic.
+	 *
+	 * The node runs the contract as deployed code only when `contract` is its 48-byte
+	 * public key, so a Base58 address is decoded to raw bytes before it is sent.
+	 *
+	 * Built-in contracts (`Coin`, `LockupPrime`, `Nft`, ...) have no view functions: an unknown
+	 * function answers `{ success: false, result: 'invalid_bic_action' }`, and a real action fails
+	 * on its first write (`exec_cannot_write_during_view`) or on its args. Read their state with
+	 * `get` / `getPrefixEntries` instead.
 	 *
 	 * @param params - Contract, function, args, and optional caller pk
 	 * @returns Promise resolving to `{ success, result, logs }`
@@ -134,19 +142,33 @@ export class ContractAPI {
 	 * @example
 	 * ```ts
 	 * const { success, result } = await sdk.contract.view({
-	 *   contract: 'LockupPrime',
-	 *   function: 'view_balance',
-	 *   args: ['my_vault']
+	 *   contract: '5Kd3N...', // deployed contract address (Base58) or its raw bytes
+	 *   function: 'get_counter',
+	 *   args: []
 	 * })
 	 * ```
 	 */
 	async view(params: ContractViewParams): Promise<ContractViewResponse> {
 		const body: Record<string, SerializableValue> = {
-			contract: params.contract,
+			contract: toViewContract(params.contract),
 			function: params.function,
 			args: params.args ?? []
 		}
 		if (params.pk) body.pk = params.pk
 		return this.client.post<ContractViewResponse>('/api/contract/view', encode(body))
+	}
+}
+
+function toViewContract(contract: string | Uint8Array): string | Uint8Array {
+	if (typeof contract !== 'string') return contract
+	const decoded = tryFromBase58(contract)
+	return decoded?.length === AMADEUS_PUBLIC_KEY_BYTE_LENGTH ? decoded : contract
+}
+
+function tryFromBase58(value: string): Uint8Array | null {
+	try {
+		return fromBase58(value)
+	} catch {
+		return null
 	}
 }

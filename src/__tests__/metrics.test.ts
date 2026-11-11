@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MetricsAPI, ChainAPI } from '../api'
 import { AmadeusClient } from '../client'
+import { AmadeusSDKError } from '../types'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -42,5 +43,15 @@ describe('Public metrics', () => {
 		expect(await chain.getMetricsBlock(42)).toEqual({ error: 'history_pruned' })
 		expect(get).toHaveBeenCalledWith('/api/chain/metrics/block/42')
 		await expect(chain.getMetricsBlock(Number.MAX_SAFE_INTEGER + 1)).rejects.toThrow()
+	})
+
+	it('rethrows the missing metrics route as a clear deprecation error', async () => {
+		const get = vi
+			.fn()
+			.mockRejectedValue(
+				new AmadeusSDKError('HTTP 404: not_found', 404, { error: 'not_found' })
+			)
+		const chain = new ChainAPI({ get } as unknown as AmadeusClient)
+		await expect(chain.getMetricsBlock(42)).rejects.toThrow(/getMetricsBlock is deprecated/)
 	})
 })
