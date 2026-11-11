@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-11-11
+
+### Added
+
+- **Testnet signing in `TransactionBuilder`.** `new TransactionBuilder(key, { network })`,
+  `createContract(abi).connect(key, network)` and an optional trailing `network` on every
+  static `buildSigned*` / `signCall` method. Mainnet stays the default.
+- **`proof.getValidatorRecord(height)`** and **`proof.getBlockProof(height, { atHeight })`**
+  for the node's `/api/proof/validator_record` and `/api/proof/block` routes.
+- NFT params gain optional `soulbound` (mint) and `nonfungible` (create collection).
+
+### Fixed
+
+- **NFT mint and create collection** sent positional args; the node decodes one VecPak map,
+  so both calls failed. `transfer` is unchanged.
+- **`contract.view`** sent a Base58 contract address as text, so deployed contracts were
+  unreachable. It now sends the 48-byte key; built-in names like `Coin` are unchanged.
+- **`chain.getTransactionEventsByAccount`** sends the cursor as `cursor_b58` and is typed
+  `{ cursor, txs: Transaction[] }`, which is what the node returns.
+- **`proof.getContractStateProof`** is typed with the node's shape
+  (`entry_height`, `entry_hash`, `root_contractstate`, `proofs`).
+- **`peer.getANRByPk`**: `anr` can be `null`.
+- `toAtomicAma` and `AMA_TRANSFER_FEE` docs: it rounds; the fee is a balance reserve, the
+  chain locks 0.01 AMA per tx and charges by usage.
+
+### Deprecated
+
+- `contract.validateBytecode`, `chain.getMetricsBlock`, `proof.getValidators` and the
+  value form of `proof.getContractStateProof(key, value)` call routes the node does not
+  serve. They now throw a deprecation error (status 404) instead of failing on the request.
+
 ## [1.7.0] - 2026-10-27
 
 ### Added

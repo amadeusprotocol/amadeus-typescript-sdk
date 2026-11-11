@@ -29,6 +29,16 @@ bun add @amadeus-protocol/sdk
 
 ## What's New
 
+### 1.8.0
+
+- **Testnet signing**: `new TransactionBuilder(key, { network: NetworkType.TESTNET })`, or pass
+  `network` to `connect()` and the static `buildSigned*` methods. Mainnet stays the default
+- **NFT mint and create collection** now send the single map argument the node expects
+- **`contract.view`** reaches deployed contracts. New `proof.getValidatorRecord()` and
+  `proof.getBlockProof()`
+- `validateBytecode`, `getMetricsBlock` and `proof.getValidators` call routes the node doesn't
+  serve; they are deprecated and throw
+
 ### 1.7.0
 
 - **Paged `get_prefix`**: since node `78b5e9c` the endpoint answers in `{ rows, cursor }` pages.
