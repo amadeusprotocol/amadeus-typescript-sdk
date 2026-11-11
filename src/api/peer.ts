@@ -92,12 +92,13 @@ export class PeerAPI {
 	 * Get ANR entry by public key
 	 *
 	 * @param publicKey - Public key (Base58 encoded)
-	 * @returns Promise resolving to ANR entry
+	 * @returns Promise resolving to the ANR entry, or `anr: null` when the node has none
 	 * @throws {Error} If public key is invalid
 	 *
 	 * @example
 	 * ```ts
 	 * const { anr } = await sdk.peer.getANRByPk('5Kd3N...')
+	 * if (anr) console.log(anr.ip4)
 	 * ```
 	 */
 	async getANRByPk(publicKey: string): Promise<GetANRByPkResponse> {

@@ -4,9 +4,9 @@ Two APIs (added in 1.3.0) expose daily activity metrics and the block evidence b
 
 - `MetricsAPI.getDaily(start, end)` reads the analytics service. The service is deployed
   separately from the node, and there is no default public endpoint: pass its origin explicitly.
-- `sdk.chain.getMetricsBlock(height)` reads one block's rooted transaction evidence from a node
-  that serves `/api/chain/metrics/block/{height}`. Node 1.6.5 and the public RPC
-  (`https://mainnet-rpc.ama.one/api`) do not serve it and answer `404 not_found`.
+- `sdk.chain.getMetricsBlock(height)` (deprecated) reads one block's rooted transaction evidence
+  from a node that serves `/api/chain/metrics/block/{height}`. The node and the public RPC
+  (`https://mainnet-rpc.ama.one/api`) do not serve it; their 404 is thrown as a deprecation error.
 
 ```ts
 import { AmadeusSDK, MetricsAPI } from '@amadeus-protocol/sdk'

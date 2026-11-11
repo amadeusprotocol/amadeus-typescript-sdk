@@ -60,7 +60,8 @@ export const NFT_ABI = {
 			],
 			outputs: [],
 			stateMutability: 'nonpayable',
-			description: 'Create a new NFT collection owned by the caller',
+			description:
+				'Create a new NFT collection owned by the caller. The node takes one VecPak map { collection, soulbound, nonfungible }: build it with buildNftCreateCollection',
 			requirements: [
 				'collection name must be ASCII alphanumeric, 1-32 chars',
 				'collection must not already exist',
@@ -94,10 +95,11 @@ export const NFT_ABI = {
 			],
 			outputs: [],
 			stateMutability: 'nonpayable',
-			description: 'Mint new NFT tokens (only callable by the collection owner)',
+			description:
+				'Mint new NFT tokens (only callable by a collection admin). The node takes one VecPak map { receiver, amount, collection, token, soulbound }: build it with buildNftMint',
 			requirements: [
 				'collection must exist',
-				'caller must be the collection owner (view_account)',
+				'caller must hold the collection permission',
 				'token id must be 1-32 bytes',
 				'amount must be > 0'
 			]

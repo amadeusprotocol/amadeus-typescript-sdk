@@ -7,6 +7,7 @@
  */
 
 import { fromBase58 } from '../../encoding'
+import { encode } from '../../serialization'
 import type { ContractCall } from '../contract-call'
 import type { NftTransferParams, NftMintParams, NftCreateCollectionParams } from './types'
 
@@ -38,28 +39,40 @@ export function buildNftTransfer(params: NftTransferParams): ContractCall {
 /**
  * Build an `Nft.mint` ContractCall.
  *
- * Only callable by the collection owner.
+ * Only callable by a collection admin. The node takes one VecPak map argument
+ * `{ receiver, amount, collection, token, soulbound }`.
  */
 export function buildNftMint(params: NftMintParams): ContractCall {
 	return {
 		contract: 'Nft',
 		method: 'mint',
 		args: [
-			fromBase58(params.recipient),
-			amountToIntegerString(params.amount),
-			params.collection,
-			params.token
+			encode({
+				receiver: fromBase58(params.recipient),
+				amount: amountToIntegerString(params.amount),
+				collection: params.collection,
+				token: params.token,
+				soulbound: params.soulbound ? 'true' : 'false'
+			})
 		]
 	}
 }
 
 /**
  * Build an `Nft.create_collection` ContractCall.
+ *
+ * The node takes one VecPak map argument `{ collection, soulbound, nonfungible }`.
  */
 export function buildNftCreateCollection(params: NftCreateCollectionParams): ContractCall {
 	return {
 		contract: 'Nft',
 		method: 'create_collection',
-		args: [params.collection, params.soulbound ? 'true' : 'false']
+		args: [
+			encode({
+				collection: params.collection,
+				soulbound: params.soulbound ? 'true' : 'false',
+				nonfungible: params.nonfungible ? 'true' : 'false'
+			})
+		]
 	}
 }

@@ -3,6 +3,10 @@ import { TransactionBuilder } from '../transaction-builder'
 import { generateKeypair, deriveSkAndSeed64FromBase58Seed, getPublicKey } from '../crypto'
 import { fromBase58 } from '../encoding'
 import { toAtomicAma } from '../conversion'
+import { bls12_381 as bls } from '@noble/curves/bls12-381'
+import { NetworkType } from '../networks'
+import { decode } from '../serialization'
+import { txDstForNetwork } from '../signing'
 
 describe('TransactionBuilder', () => {
 	let keypair: ReturnType<typeof generateKeypair>
@@ -467,6 +471,75 @@ describe('TransactionBuilder', () => {
 			expect(
 				Math.abs(instanceResult.txPacked.length - staticResult.txPacked.length)
 			).toBeLessThan(5)
+		})
+	})
+
+	describe('Network signing domain', () => {
+		const verifiesUnder = (packed: Uint8Array, dst: string): boolean => {
+			const envelope = decode(packed) as Map<Uint8Array, Uint8Array>
+			const fieldOf = (name: string): Uint8Array =>
+				[...envelope].find(
+					([key]) => new TextDecoder().decode(key) === name
+				)?.[1] as Uint8Array
+			const signerPk = getPublicKey(
+				deriveSkAndSeed64FromBase58Seed(keypair.privateKey).seed64
+			)
+			return bls.verify(fieldOf('signature'), fieldOf('hash'), signerPk, { DST: dst })
+		}
+		const transfer = { recipient: generateKeypair().publicKey, amount: 1, symbol: 'AMA' }
+
+		it('defaults to the mainnet DST', () => {
+			const result = new TransactionBuilder(keypair.privateKey).transfer(transfer)
+
+			expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.MAINNET))).toBe(true)
+			expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.TESTNET))).toBe(false)
+		})
+
+		it('signs every instance path under the testnet DST when built for testnet', () => {
+			const builder = new TransactionBuilder(keypair.privateKey, {
+				network: NetworkType.TESTNET
+			})
+			const recipient = fromBase58(transfer.recipient)
+			const results = [
+				builder.transfer(transfer),
+				builder.buildAndSign('Coin', 'transfer', [recipient, '1', 'AMA']),
+				builder.sign(builder.build('Coin', 'transfer', [recipient, '1', 'AMA'])),
+				builder.lockupPrimeDailyCheckin({ vaultIndex: 1 }),
+				builder.nftCreateCollection({ collection: 'CARDS' })
+			]
+
+			for (const result of results) {
+				expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.TESTNET))).toBe(
+					true
+				)
+				expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.MAINNET))).toBe(
+					false
+				)
+			}
+		})
+
+		it('signs static calls under the testnet DST when passed testnet', () => {
+			const results = [
+				TransactionBuilder.buildSignedTransfer(
+					{ ...transfer, senderPrivkey: keypair.privateKey },
+					NetworkType.TESTNET
+				),
+				TransactionBuilder.buildSignedLockupUnlock(
+					{ senderPrivkey: keypair.privateKey, vaultIndex: 1 },
+					NetworkType.TESTNET
+				),
+				TransactionBuilder.signCall(
+					keypair.privateKey,
+					{ contract: 'Coin', method: 'transfer', args: [] },
+					NetworkType.TESTNET
+				)
+			]
+
+			for (const result of results) {
+				expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.TESTNET))).toBe(
+					true
+				)
+			}
 		})
 	})
 })
