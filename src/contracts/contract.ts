@@ -24,6 +24,7 @@
  */
 
 import type { BuildTransactionResult } from '../types'
+import type { NetworkType } from '../networks'
 import { signContractCall } from '../signing'
 import type { AbiDefinition, AbiInput } from './abi-types'
 import type { ContractCall } from './contract-call'
@@ -80,8 +81,9 @@ export type TypedContract<TAbi extends AbiDefinition> = ContractMethods<TAbi> & 
 	 * derives keys, builds, and signs in one step.
 	 *
 	 * @param privateKey - Base58 encoded private key (seed)
+	 * @param network - Network whose signing domain to use (default mainnet)
 	 */
-	connect(privateKey: string): SignedContract<TAbi>
+	connect(privateKey: string, network?: NetworkType): SignedContract<TAbi>
 }
 
 /**
@@ -156,8 +158,8 @@ export function createContract<TAbi extends AbiDefinition>(abi: TAbi): TypedCont
 	const contract: Record<string, unknown> = {
 		abi,
 		contractName: abi.contractName,
-		connect(privateKey: string) {
-			return createSignedContract(abi, privateKey)
+		connect(privateKey: string, network?: NetworkType) {
+			return createSignedContract(abi, privateKey, network)
 		}
 	}
 
@@ -175,7 +177,8 @@ export function createContract<TAbi extends AbiDefinition>(abi: TAbi): TypedCont
  */
 function createSignedContract<TAbi extends AbiDefinition>(
 	abi: TAbi,
-	privateKey: string
+	privateKey: string,
+	network?: NetworkType
 ): SignedContract<TAbi> {
 	const contract: Record<string, unknown> = {
 		abi,
@@ -185,7 +188,7 @@ function createSignedContract<TAbi extends AbiDefinition>(
 	for (const fn of abi.abi) {
 		contract[fn.name] = (params?: Record<string, string>) => {
 			const call = buildContractCall(abi, fn.name as never, (params ?? {}) as never)
-			return signContractCall(privateKey, call)
+			return signContractCall(privateKey, call, network)
 		}
 	}
 

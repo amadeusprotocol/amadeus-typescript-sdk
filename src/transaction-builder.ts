@@ -29,6 +29,7 @@ import type { PrivKey } from '@noble/curves/abstract/utils'
 
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
 import { toAtomicAma } from './conversion'
+import type { NetworkType } from './networks'
 import {
 	buildUnsigned,
 	buildUnsignedFromCall,
@@ -63,6 +64,12 @@ import type {
 	NftCreateCollectionParams
 } from './contracts/nft/types'
 
+/** Options for `new TransactionBuilder(privateKey, options)` */
+export interface TransactionBuilderOptions {
+	/** Network whose signing domain (DST) every signature uses (default mainnet) */
+	network?: NetworkType
+}
+
 /**
  * Transaction Builder for Amadeus Protocol
  *
@@ -87,6 +94,7 @@ import type {
  */
 export class TransactionBuilder {
 	private readonly privateKey: string | null
+	private readonly network: NetworkType | undefined
 	private signerPk: Uint8Array | null = null
 	private signerSk: PrivKey | null = null
 
@@ -95,9 +103,17 @@ export class TransactionBuilder {
 	 *
 	 * @param privateKey - Optional Base58 encoded private key (seed). If provided,
 	 *                     the builder will use this key for all transactions.
+	 * @param options - Optional `network`; testnet transactions must be signed with
+	 *                  `NetworkType.TESTNET` or the testnet node rejects them
+	 *
+	 * @example
+	 * ```ts
+	 * const builder = new TransactionBuilder('5Kd3N...', { network: NetworkType.TESTNET })
+	 * ```
 	 */
-	constructor(privateKey?: string) {
+	constructor(privateKey?: string, options: TransactionBuilderOptions = {}) {
 		this.privateKey = privateKey || null
+		this.network = options.network
 		if (this.privateKey) {
 			this.initializeKeys()
 		}
@@ -178,7 +194,7 @@ export class TransactionBuilder {
 		if (!this.privateKey) {
 			throw new Error('Private key required. Initialize builder with private key.')
 		}
-		return createContract(abi).connect(this.privateKey)
+		return createContract(abi).connect(this.privateKey, this.network)
 	}
 
 	// ========================================================================
@@ -199,8 +215,12 @@ export class TransactionBuilder {
 	 * const { txHash, txPacked } = TransactionBuilder.signCall('5Kd3N...', call)
 	 * ```
 	 */
-	static signCall(senderPrivkey: string, call: ContractCall): BuildTransactionResult {
-		return signContractCall(senderPrivkey, call)
+	static signCall(
+		senderPrivkey: string,
+		call: ContractCall,
+		network?: NetworkType
+	): BuildTransactionResult {
+		return signContractCall(senderPrivkey, call, network)
 	}
 
 	/**
@@ -216,9 +236,10 @@ export class TransactionBuilder {
 	static buildAndSignCall(
 		signerPk: Uint8Array,
 		signerSk: PrivKey | string | Uint8Array,
-		call: ContractCall
+		call: ContractCall,
+		network?: NetworkType
 	): BuildTransactionResult {
-		return buildAndSignRaw(signerPk, signerSk, call.contract, call.method, call.args)
+		return buildAndSignRaw(signerPk, signerSk, call.contract, call.method, call.args, network)
 	}
 
 	/**
@@ -234,7 +255,7 @@ export class TransactionBuilder {
 	buildAndSignCall(call: ContractCall): BuildTransactionResult {
 		const pk = this.requirePk()
 		const sk = this.getSignerSk()
-		return buildAndSignRaw(pk, sk, call.contract, call.method, call.args)
+		return buildAndSignRaw(pk, sk, call.contract, call.method, call.args, this.network)
 	}
 
 	// ========================================================================
@@ -260,7 +281,7 @@ export class TransactionBuilder {
 		unsignedTx: UnsignedTransactionWithHash,
 		signerSk?: PrivKey | string | Uint8Array
 	): BuildTransactionResult {
-		return signUnsigned(unsignedTx, this.getSignerSk(signerSk))
+		return signUnsigned(unsignedTx, this.getSignerSk(signerSk), this.network)
 	}
 
 	/**
@@ -275,7 +296,7 @@ export class TransactionBuilder {
 	): BuildTransactionResult {
 		const pk = this.requirePk(signerPk)
 		const sk = this.getSignerSk(signerSk)
-		return buildAndSignRaw(pk, sk, contract, method, args)
+		return buildAndSignRaw(pk, sk, contract, method, args, this.network)
 	}
 
 	/**
@@ -295,9 +316,10 @@ export class TransactionBuilder {
 	 */
 	static sign(
 		unsignedTx: UnsignedTransactionWithHash,
-		signerSk: PrivKey | string | Uint8Array
+		signerSk: PrivKey | string | Uint8Array,
+		network?: NetworkType
 	): BuildTransactionResult {
-		return signUnsigned(unsignedTx, signerSk)
+		return signUnsigned(unsignedTx, signerSk, network)
 	}
 
 	/**
@@ -308,9 +330,10 @@ export class TransactionBuilder {
 		signerSk: PrivKey | string | Uint8Array,
 		contract: string,
 		method: string,
-		args: SerializableValue[]
+		args: SerializableValue[],
+		network?: NetworkType
 	): BuildTransactionResult {
-		return buildAndSignRaw(signerPk, signerSk, contract, method, args)
+		return buildAndSignRaw(signerPk, signerSk, contract, method, args, network)
 	}
 
 	// ========================================================================
@@ -355,14 +378,18 @@ export class TransactionBuilder {
 	/**
 	 * Build and sign a Coin transfer transaction (static)
 	 */
-	static buildSignedTransfer(input: TransferTransactionInput): BuildTransactionResult {
+	static buildSignedTransfer(
+		input: TransferTransactionInput,
+		network?: NetworkType
+	): BuildTransactionResult {
 		return TransactionBuilder.signCall(
 			input.senderPrivkey,
 			buildCoinTransfer({
 				recipient: input.recipient,
 				amount: input.amount,
 				symbol: input.symbol
-			})
+			}),
+			network
 		)
 	}
 
@@ -422,34 +449,41 @@ export class TransactionBuilder {
 	/**
 	 * Build and sign a LockupPrime lock transaction (static)
 	 */
-	static buildSignedLockupPrimeLock(input: LockupPrimeLockInput): BuildTransactionResult {
+	static buildSignedLockupPrimeLock(
+		input: LockupPrimeLockInput,
+		network?: NetworkType
+	): BuildTransactionResult {
 		const call = createContract(LOCKUP_PRIME_ABI).lock({
 			amount: toAtomicAma(input.amount).toString(),
 			tier: input.tier
 		})
-		return TransactionBuilder.signCall(input.senderPrivkey, call)
+		return TransactionBuilder.signCall(input.senderPrivkey, call, network)
 	}
 
 	/**
 	 * Build and sign a LockupPrime unlock transaction (static)
 	 */
-	static buildSignedLockupPrimeUnlock(input: LockupPrimeUnlockInput): BuildTransactionResult {
+	static buildSignedLockupPrimeUnlock(
+		input: LockupPrimeUnlockInput,
+		network?: NetworkType
+	): BuildTransactionResult {
 		const call = createContract(LOCKUP_PRIME_ABI).unlock({
 			vaultIndex: input.vaultIndex.toString()
 		})
-		return TransactionBuilder.signCall(input.senderPrivkey, call)
+		return TransactionBuilder.signCall(input.senderPrivkey, call, network)
 	}
 
 	/**
 	 * Build and sign a LockupPrime daily check-in transaction (static)
 	 */
 	static buildSignedLockupPrimeDailyCheckin(
-		input: LockupPrimeDailyCheckinInput
+		input: LockupPrimeDailyCheckinInput,
+		network?: NetworkType
 	): BuildTransactionResult {
 		const call = createContract(LOCKUP_PRIME_ABI).daily_checkin({
 			vaultIndex: input.vaultIndex.toString()
 		})
-		return TransactionBuilder.signCall(input.senderPrivkey, call)
+		return TransactionBuilder.signCall(input.senderPrivkey, call, network)
 	}
 
 	// ========================================================================
@@ -459,11 +493,14 @@ export class TransactionBuilder {
 	/**
 	 * Build and sign a Lockup unlock transaction (static)
 	 */
-	static buildSignedLockupUnlock(input: LockupUnlockInput): BuildTransactionResult {
+	static buildSignedLockupUnlock(
+		input: LockupUnlockInput,
+		network?: NetworkType
+	): BuildTransactionResult {
 		const call = createContract(LOCKUP_ABI).unlock({
 			vaultIndex: input.vaultIndex.toString()
 		})
-		return TransactionBuilder.signCall(input.senderPrivkey, call)
+		return TransactionBuilder.signCall(input.senderPrivkey, call, network)
 	}
 
 	// ========================================================================
@@ -505,17 +542,27 @@ export class TransactionBuilder {
 	// ========================================================================
 
 	/** Build and sign an `Nft.transfer` transaction (static) */
-	static buildSignedNftTransfer(input: NftTransferInput): BuildTransactionResult {
-		return TransactionBuilder.signCall(input.senderPrivkey, buildNftTransfer(input))
+	static buildSignedNftTransfer(
+		input: NftTransferInput,
+		network?: NetworkType
+	): BuildTransactionResult {
+		return TransactionBuilder.signCall(input.senderPrivkey, buildNftTransfer(input), network)
 	}
 
 	/** Build and sign an `Nft.mint` transaction (static) */
-	static buildSignedNftMint(input: NftMintInput): BuildTransactionResult {
-		return TransactionBuilder.signCall(input.senderPrivkey, buildNftMint(input))
+	static buildSignedNftMint(input: NftMintInput, network?: NetworkType): BuildTransactionResult {
+		return TransactionBuilder.signCall(input.senderPrivkey, buildNftMint(input), network)
 	}
 
 	/** Build and sign an `Nft.create_collection` transaction (static) */
-	static buildSignedNftCreateCollection(input: NftCreateCollectionInput): BuildTransactionResult {
-		return TransactionBuilder.signCall(input.senderPrivkey, buildNftCreateCollection(input))
+	static buildSignedNftCreateCollection(
+		input: NftCreateCollectionInput,
+		network?: NetworkType
+	): BuildTransactionResult {
+		return TransactionBuilder.signCall(
+			input.senderPrivkey,
+			buildNftCreateCollection(input),
+			network
+		)
 	}
 }
