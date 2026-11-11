@@ -35,6 +35,12 @@ describe('Conversion Utilities', () => {
 			expect(toAtomicAma(1.00000001)).toBe(1_000_000_010)
 		})
 
+		it('rounds digits past the 9th decimal to the nearest atomic unit', () => {
+			expect(toAtomicAma(1.9999999999)).toBe(2_000_000_000)
+			expect(toAtomicAma('0.0000000019')).toBe(2)
+			expect(toAtomicAma(1.0000000004)).toBe(1_000_000_000)
+		})
+
 		it('accepts string inputs for exact precision from user input', () => {
 			expect(toAtomicAma('0')).toBe(0)
 			expect(toAtomicAma('1')).toBe(1_000_000_000)

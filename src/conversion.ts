@@ -40,8 +40,8 @@ export function fromAtomicAma(atomicAma: number | string): number {
 /**
  * Convert human-readable AMA amount to atomic units
  *
- * Uses string splitting to avoid floating-point precision issues
- * while preserving truncation (never rounds up) for safety.
+ * Rounds (never truncates) to the nearest atomic unit via `toFixed(9)`, absorbing float error:
+ * `1.00000001` gives `1000000010` and `1.9999999999` gives `2000000000`.
  *
  * @param ama - Human-readable AMA amount (number or string)
  * @returns Atomic units (integer)
