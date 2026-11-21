@@ -103,8 +103,8 @@ export class ProofAPI {
 	getContractStateProof(key: Uint8Array | string): Promise<ContractStateProof>
 	/**
 	 * @deprecated The node no longer verifies a value (`/api/proof/contractstate/{key}/{value}`
-	 *   fails with HTTP 520), so passing `value` always throws. Fetch the proof and compare
-	 *   `proofs[0].proof.terminus.value_hash` yourself.
+	 *   fails with HTTP 520), so passing `value` always throws (status 404) before any request.
+	 *   Fetch the proof and compare `proofs[0].proof.terminus.value_hash` yourself.
 	 */
 	getContractStateProof(
 		key: Uint8Array | string,
@@ -116,7 +116,8 @@ export class ProofAPI {
 	): Promise<ContractStateProof> {
 		if (value !== undefined) {
 			throw new AmadeusSDKError(
-				'proof.getContractStateProof(key, value) is deprecated: the node no longer verifies values, call it with the key only'
+				'proof.getContractStateProof(key, value) is deprecated: the node no longer verifies values, call it with the key only',
+				404
 			)
 		}
 		const keyB58 = typeof key === 'string' ? key : toBase58(key)
