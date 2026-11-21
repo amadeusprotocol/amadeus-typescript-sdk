@@ -385,8 +385,8 @@ export interface TransferTransactionInput {
 	senderPrivkey: string
 	/** Base58 encoded recipient address */
 	recipient: string
-	/** Amount in human-readable format */
-	amount: number
+	/** Amount in human-readable format; pass a string for exact large amounts */
+	amount: number | string
 	/** Token symbol (e.g., 'AMA') */
 	symbol: string
 }

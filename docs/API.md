@@ -806,8 +806,16 @@ const entries = await readAllPrefixPages(async (cursor) => {
 
 ### `toAtomicAma(ama: number | string): number`
 
-AMA to atomic units (9 decimals). Exact for up to 9 decimals; finer input is rounded
-(`toAtomicAma('1.0000000005')` is `1000000001`), so validate it with `validateAmount` first.
+AMA to atomic units (9 decimals), for form validation. Never throws: returns `NaN` for anything
+that is not a plain non-negative decimal (`'abc'`, `'-1'`, `'1,5'`, `'1e21'`). Finer than 9
+decimals is rounded (`toAtomicAma('1.0000000005')` is `1000000001`). String input is exact up to
+`Number.MAX_SAFE_INTEGER` atomic units (about 9,007,199 AMA); a number holds 9 decimals exactly only
+up to about 8,388,608 AMA. Use `toAtomicAmaExact` with a string above that.
+
+### `toAtomicAmaExact(ama: number | string): bigint`
+
+AMA to exact atomic units with no float math. Throws on non-numeric, negative, non-finite or
+more-than-9-decimal input. `buildCoinTransfer` and the LockupPrime lock builders use it.
 
 ### `fromAtomicAma(atomicAma: number | string): number`
 

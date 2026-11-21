@@ -565,9 +565,10 @@ const decoded = decode(encoded)
 ### Token Conversions
 
 ```typescript
-import { toAtomicAma, fromAtomicAma, flatToAma } from '@amadeus-protocol/sdk'
+import { toAtomicAma, toAtomicAmaExact, fromAtomicAma, flatToAma } from '@amadeus-protocol/sdk'
 
 const atomic = toAtomicAma(1.5) // 1500000000 (also accepts '1.5')
+const exact = toAtomicAmaExact('9876543.123456789') // 9876543123456789n
 const ama = fromAtomicAma(1500000000) // 1.5
 const large = flatToAma(40_414_833_934_371_491n) // bigint-safe
 ```
@@ -575,7 +576,11 @@ const large = flatToAma(40_414_833_934_371_491n) // bigint-safe
 `fromAtomicAma()` returns 0 for 0 and throws for negative values, values between 0 and 1, and
 values above `Number.MAX_SAFE_INTEGER`; use `flatToAma()` for `bigint` amounts. `toAtomicAma()` is
 exact for up to 9 decimals and rounds anything finer (`toAtomicAma('1.0000000005')` is
-`1000000001`), so check user input with `validateAmount()` first.
+`1000000001`). It returns `NaN` for input that is not a plain non-negative decimal (`'1,5'`,
+`'-1'`, `'1e21'`). String input is exact only up to `Number.MAX_SAFE_INTEGER` atomic units (about
+9,007,199 AMA), and a number holds 9 decimals exactly only up to about 8,388,608 AMA.
+`toAtomicAmaExact()` returns a `bigint` and throws on invalid or over-precise input; the transfer
+and lock builders use it.
 
 ### Mnemonics and account derivation
 
@@ -777,6 +782,7 @@ in [docs/GUIDE.md](./docs/GUIDE.md). The summary below lists every export group.
 ### Conversion
 
 - `toAtomicAma(ama: number | string): number` - Convert AMA to atomic units (rounds past 9 decimals)
+- `toAtomicAmaExact(ama: number | string): bigint` - Exact conversion for on-chain amounts; throws on invalid, negative or over-9-decimal input
 - `fromAtomicAma(atomicAma: number | string): number` - Convert atomic units to AMA. Returns 0 for 0; throws for negative values, values between 0 and 1, and values above `Number.MAX_SAFE_INTEGER`
 - `flatToAma(flat: bigint): number` - Convert a `bigint` atomic amount to AMA
 
