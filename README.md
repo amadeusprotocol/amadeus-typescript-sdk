@@ -29,6 +29,14 @@ bun add @amadeus-protocol/sdk
 
 ## What's New
 
+### 1.9.0
+
+- **Exact on-chain amounts**: transfer and lock builders convert with the new
+  `toAtomicAmaExact()` (bigint, no float math) and throw on invalid input. `toAtomicAma()` stays
+  non-throwing and returns `NaN` for anything that isn't a plain decimal
+- **Unique nonces**: transactions built in the same millisecond no longer share a nonce
+- **`createContract(NFT_ABI)`** builds the same args as the `buildNft*` helpers
+
 ### 1.8.0
 
 - **Testnet signing**: `new TransactionBuilder(key, { network: NetworkType.TESTNET })`, or pass
