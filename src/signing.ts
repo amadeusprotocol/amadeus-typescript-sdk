@@ -37,9 +37,16 @@ export function txDstForNetwork(network?: NetworkType): string {
 	return network === NetworkType.TESTNET ? TX_DST_TESTNET : TX_DST
 }
 
-/** Generate a transaction nonce based on current timestamp */
+const nonceState = { last: 0n }
+
+/**
+ * Generate a transaction nonce from the current timestamp, strictly increasing within the
+ * process so two transactions built in the same millisecond never share a nonce.
+ */
 function generateNonce(): bigint {
-	return BigInt(Date.now()) * 1_000_000n
+	const fromClock = BigInt(Date.now()) * 1_000_000n
+	nonceState.last = fromClock > nonceState.last ? fromClock : nonceState.last + 1n
+	return nonceState.last
 }
 
 /**
