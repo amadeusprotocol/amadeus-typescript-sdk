@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`toAtomicAmaExact(ama)`** converts a plain decimal AMA amount to exact atomic units as a
+  `bigint`, with no float math. It throws on non-numeric, negative, non-finite or
+  more-than-9-decimal input.
+
+### Fixed
+
+- **On-chain AMA amounts.** `buildCoinTransfer`, `TransactionBuilder.transfer` /
+  `buildTransfer` / `buildSignedTransfer` and the LockupPrime lock builders signed whatever
+  `toAtomicAma` returned: `NaN` for `'abc'`, negative amounts, `'1,5'` as 1 AMA, `1e21` and
+  above as 1 atomic unit, and 9-decimal amounts above about 8,388,608 AMA off by a few units.
+  They now use `toAtomicAmaExact`, so `'9876543.123456789'` is exact and invalid input throws.
+  `TransferTransactionInput.amount` now also accepts a decimal string.
+  Number amounts carrying float noise past 9 decimals (`0.1 + 0.2`) now throw too.
+- **`toAtomicAma`** still never throws but returns `NaN` for anything that is not a plain
+  non-negative decimal (`'1,5'`, `'-1'`, `'1e21'`, `Infinity`). String input is exact up to
+  `Number.MAX_SAFE_INTEGER` atomic units.
+- **Transaction nonces** collided when two transactions were built in the same millisecond,
+  and the node dropped the second. Nonces are now strictly increasing within a process.
+- **`createContract(NFT_ABI)`**: `transfer` sent the receiver as Base58 text (the node wants
+  48 raw bytes), and `mint` / `create_collection` sent positional args (the node wants one
+  VecPak map). All three now build the same args as `buildNftTransfer`, `buildNftMint` and
+  `buildNftCreateCollection`. `create_collection` accepts only `'true'` or `'false'` for
+  `soulbound`.
+- **`proof.getContractStateProof(key, value)`** throws its deprecation error with status 404,
+  like the other deprecated methods.
+
 ## [1.8.0] - 2026-11-11
 
 ### Added
@@ -34,7 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `contract.validateBytecode`, `chain.getMetricsBlock`, `proof.getValidators` and the
   value form of `proof.getContractStateProof(key, value)` call routes the node does not
-  serve. They now throw a deprecation error (status 404) instead of failing on the request.
+  serve. `contract.validateBytecode` and `proof.getValidators` throw a deprecation error
+  (status 404) without sending a request. `chain.getMetricsBlock` still sends it, for custom
+  nodes that serve the route, and turns a 404 into a deprecation error. The value form of
+  `proof.getContractStateProof` throws a deprecation error before sending, without a status
+  (status 404 from the next release).
 
 ## [1.7.0] - 2026-10-27
 

@@ -8,19 +8,19 @@
  * ## Recommended: ABI-driven API
  *
  * ```ts
- * import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+ * import { TransactionBuilder, LOCKUP_PRIME_ABI, toAtomicAmaExact } from '@amadeus-protocol/sdk'
  *
  * // Via builder.contract(abi) — typed methods, auto-signed:
  * const builder = new TransactionBuilder('5Kd3N...')
  * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
- *   amount: toAtomicAma(100).toString(),
+ *   amount: toAtomicAmaExact(100).toString(),
  *   tier: '30d'
  * })
  *
  * // Or standalone:
  * import { createContract } from '@amadeus-protocol/sdk'
  * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
- * const call = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+ * const call = lockupPrime.lock({ amount: toAtomicAmaExact(100).toString(), tier: '30d' })
  * const result = TransactionBuilder.signCall('5Kd3N...', call)
  * ```
  */
@@ -28,7 +28,7 @@
 import type { PrivKey } from '@noble/curves/abstract/utils'
 
 import { deriveSkAndSeed64FromBase58Seed, getPublicKey } from './crypto'
-import { toAtomicAma } from './conversion'
+import { toAtomicAmaExact } from './conversion'
 import type { NetworkType } from './networks'
 import {
 	buildUnsigned,
@@ -81,7 +81,7 @@ export interface TransactionBuilderOptions {
  * // ABI-driven (recommended)
  * const builder = new TransactionBuilder('5Kd3N...')
  * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
- *   amount: toAtomicAma(100).toString(),
+ *   amount: toAtomicAmaExact(100).toString(),
  *   tier: '30d'
  * })
  *
@@ -176,7 +176,7 @@ export class TransactionBuilder {
 	 *
 	 * // LockupPrime — all methods auto-detected from ABI:
 	 * const result = builder.contract(LOCKUP_PRIME_ABI).lock({
-	 *   amount: toAtomicAma(100).toString(),
+	 *   amount: toAtomicAmaExact(100).toString(),
 	 *   tier: '30d'
 	 * })
 	 *
@@ -402,7 +402,7 @@ export class TransactionBuilder {
 	 */
 	lockupPrimeLock(input: Omit<LockupPrimeLockInput, 'senderPrivkey'>): BuildTransactionResult {
 		return this.contract(LOCKUP_PRIME_ABI).lock({
-			amount: toAtomicAma(input.amount).toString(),
+			amount: toAtomicAmaExact(input.amount).toString(),
 			tier: input.tier
 		})
 	}
@@ -454,7 +454,7 @@ export class TransactionBuilder {
 		network?: NetworkType
 	): BuildTransactionResult {
 		const call = createContract(LOCKUP_PRIME_ABI).lock({
-			amount: toAtomicAma(input.amount).toString(),
+			amount: toAtomicAmaExact(input.amount).toString(),
 			tier: input.tier
 		})
 		return TransactionBuilder.signCall(input.senderPrivkey, call, network)

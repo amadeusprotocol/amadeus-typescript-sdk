@@ -4,13 +4,13 @@
  * The Coin contract is a built-in native contract with no ABI file.
  * It differs from deployed (RISC-V) contracts:
  * - First arg (recipient) is raw binary Uint8Array from fromBase58(), not a UTF-8 string
- * - Amount requires toAtomicAma() conversion
+ * - Amount is converted to exact atomic units with toAtomicAmaExact()
  *
  * This module provides a dedicated builder that handles these special encodings
  * while returning a standard ContractCall for uniform consumption by TransactionBuilder.
  */
 
-import { toAtomicAma } from '../conversion'
+import { toAtomicAmaExact } from '../conversion'
 import { fromBase58 } from '../encoding'
 import type { ContractCall } from './contract-call'
 
@@ -20,7 +20,7 @@ import type { ContractCall } from './contract-call'
 export interface CoinTransferParams {
 	/** Base58-encoded recipient address */
 	recipient: string
-	/** Amount in human-readable units (e.g. 10.5 AMA) */
+	/** Amount in human-readable units (e.g. 10.5 or '10.5'); pass a string for exact large amounts */
 	amount: number | string
 	/** Token symbol (e.g. 'AMA') */
 	symbol: string
@@ -31,7 +31,8 @@ export interface CoinTransferParams {
  *
  * Handles the special encoding requirements of the Coin contract:
  * - recipient is decoded from Base58 to raw Uint8Array
- * - amount is converted to atomic units via toAtomicAma()
+ * - amount is converted to exact atomic units via toAtomicAmaExact(), which throws on
+ *   invalid, negative or over-precise amounts
  *
  * @example
  * ```ts
@@ -47,6 +48,10 @@ export function buildCoinTransfer(params: CoinTransferParams): ContractCall {
 	return {
 		contract: 'Coin',
 		method: 'transfer',
-		args: [fromBase58(params.recipient), toAtomicAma(params.amount).toString(), params.symbol]
+		args: [
+			fromBase58(params.recipient),
+			toAtomicAmaExact(params.amount).toString(),
+			params.symbol
+		]
 	}
 }

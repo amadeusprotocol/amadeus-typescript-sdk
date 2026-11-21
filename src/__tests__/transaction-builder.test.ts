@@ -7,6 +7,7 @@ import { bls12_381 as bls } from '@noble/curves/bls12-381'
 import { NetworkType } from '../networks'
 import { decode } from '../serialization'
 import { txDstForNetwork } from '../signing'
+import { buildCoinTransfer } from '../contracts/coin'
 
 describe('TransactionBuilder', () => {
 	let keypair: ReturnType<typeof generateKeypair>
@@ -539,6 +540,74 @@ describe('TransactionBuilder', () => {
 				expect(verifiesUnder(result.txPacked, txDstForNetwork(NetworkType.TESTNET))).toBe(
 					true
 				)
+			}
+		})
+	})
+
+	describe('On-chain amounts', () => {
+		const field = (map: unknown, name: string): unknown =>
+			[...(map as Map<Uint8Array, unknown>)].find(
+				([key]) => new TextDecoder().decode(key) === name
+			)?.[1]
+		const actionArgs = (packed: Uint8Array): unknown[] =>
+			field(field(field(decode(packed), 'tx'), 'action'), 'args') as unknown[]
+		const text = (bytes: unknown): string => new TextDecoder().decode(bytes as Uint8Array)
+
+		it('keeps "9876543.123456789" AMA exact through the transfer and lock builders', () => {
+			const recipient = generateKeypair().publicKey
+			const amount = '9876543.123456789'
+			const transfer = TransactionBuilder.buildSignedTransfer({
+				senderPrivkey: keypair.privateKey,
+				recipient,
+				amount,
+				symbol: 'AMA'
+			})
+			const staticLock = TransactionBuilder.buildSignedLockupPrimeLock({
+				senderPrivkey: keypair.privateKey,
+				amount,
+				tier: '30d'
+			})
+			const instanceLock = new TransactionBuilder(keypair.privateKey).lockupPrimeLock({
+				amount,
+				tier: '30d'
+			})
+
+			expect(buildCoinTransfer({ recipient, amount, symbol: 'AMA' }).args[1]).toBe(
+				'9876543123456789'
+			)
+			expect(text(actionArgs(transfer.txPacked)[1])).toBe('9876543123456789')
+			expect(text(actionArgs(staticLock.txPacked)[0])).toBe('9876543123456789')
+			expect(text(actionArgs(instanceLock.txPacked)[0])).toBe('9876543123456789')
+		})
+
+		it('rejects invalid amounts in every builder instead of signing a wrong value', () => {
+			const recipient = generateKeypair().publicKey
+			const builder = new TransactionBuilder(keypair.privateKey)
+			for (const amount of ['1,5', 'abc', '-1', '1e21', 1e21, -1, NaN, '1.0000000001']) {
+				expect(() => buildCoinTransfer({ recipient, amount, symbol: 'AMA' })).toThrow(
+					/Invalid AMA amount/
+				)
+				expect(() => builder.transfer({ recipient, amount, symbol: 'AMA' })).toThrow(
+					/Invalid AMA amount/
+				)
+				expect(() =>
+					TransactionBuilder.buildSignedTransfer({
+						senderPrivkey: keypair.privateKey,
+						recipient,
+						amount,
+						symbol: 'AMA'
+					})
+				).toThrow(/Invalid AMA amount/)
+				expect(() => builder.lockupPrimeLock({ amount, tier: '30d' })).toThrow(
+					/Invalid AMA amount/
+				)
+				expect(() =>
+					TransactionBuilder.buildSignedLockupPrimeLock({
+						senderPrivkey: keypair.privateKey,
+						amount,
+						tier: '30d'
+					})
+				).toThrow(/Invalid AMA amount/)
 			}
 		})
 	})

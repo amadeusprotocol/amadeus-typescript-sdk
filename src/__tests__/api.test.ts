@@ -273,6 +273,9 @@ describe('API Modules', () => {
 			const api = new ProofAPI(mockClient)
 
 			await expect(api.getContractStateProof('key', 'value')).rejects.toThrow(/deprecated/)
+			await expect(api.getContractStateProof('key', 'value')).rejects.toMatchObject({
+				status: 404
+			})
 			expect(mockClient.get).not.toHaveBeenCalled()
 		})
 

@@ -10,16 +10,16 @@
  *
  * @example
  * ```ts
- * import { createContract, LOCKUP_PRIME_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+ * import { createContract, LOCKUP_PRIME_ABI, toAtomicAmaExact } from '@amadeus-protocol/sdk'
  *
  * // Unsigned — returns ContractCall for TransactionBuilder.signCall()
  * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
- * const call = lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+ * const call = lockupPrime.lock({ amount: toAtomicAmaExact(100).toString(), tier: '30d' })
  * const { txHash, txPacked } = TransactionBuilder.signCall(privateKey, call)
  *
  * // Signed — bind a private key, methods return BuildTransactionResult directly
  * const signed = createContract(LOCKUP_PRIME_ABI).connect(privateKey)
- * const result = signed.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })
+ * const result = signed.lock({ amount: toAtomicAmaExact(100).toString(), tier: '30d' })
  * ```
  */
 
@@ -112,13 +112,13 @@ export type SignedContract<TAbi extends AbiDefinition> = SignedContractMethods<T
  *
  * @example
  * ```ts
- * import { createContract, LOCKUP_PRIME_ABI, LOCKUP_ABI, toAtomicAma } from '@amadeus-protocol/sdk'
+ * import { createContract, LOCKUP_PRIME_ABI, LOCKUP_ABI, toAtomicAmaExact } from '@amadeus-protocol/sdk'
  *
  * // Each ABI function becomes a typed method:
  * const lockupPrime = createContract(LOCKUP_PRIME_ABI)
- * lockupPrime.lock({ amount: toAtomicAma(100).toString(), tier: '30d' })   // typed
- * lockupPrime.unlock({ vaultIndex: '3' })                                   // typed
- * lockupPrime.daily_checkin({ vaultIndex: '7' })                            // typed
+ * lockupPrime.lock({ amount: toAtomicAmaExact(100).toString(), tier: '30d' })   // typed
+ * lockupPrime.unlock({ vaultIndex: '3' })                                        // typed
+ * lockupPrime.daily_checkin({ vaultIndex: '7' })                                 // typed
  *
  * // Sign the call:
  * const call = lockupPrime.lock({ amount: '100000000000', tier: '30d' })

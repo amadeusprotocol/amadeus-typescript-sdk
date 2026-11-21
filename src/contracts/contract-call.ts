@@ -12,6 +12,8 @@ import type {
 	ExtractFunctionNames,
 	FunctionParams
 } from './abi-types'
+import { NFT_ABI } from './nft/abi'
+import { buildNftCreateCollection, buildNftMint, buildNftTransfer } from './nft/helpers'
 
 /**
  * A fully-resolved contract call ready for TransactionBuilder.
@@ -90,9 +92,45 @@ export function buildContractCall<
 		args.push(value)
 	}
 
+	// The built-in Nft contract needs raw pk bytes and VecPak maps, which string inputs can't express
+	const nftCall =
+		abi.contractName === NFT_ABI.contractName
+			? buildNftAbiCall(functionName as string, params as Record<string, string>)
+			: undefined
+	if (nftCall) return nftCall
+
 	return {
 		contract: abi.contractName as ExtractContractName<TAbi>,
 		method: functionName as string,
 		args
+	}
+}
+
+function buildNftAbiCall(
+	functionName: string,
+	params: Record<string, string>
+): ContractCall | undefined {
+	switch (functionName) {
+		case 'transfer':
+			return buildNftTransfer({
+				recipient: params.receiver,
+				amount: params.amount,
+				collection: params.collection,
+				token: params.token
+			})
+		case 'mint':
+			return buildNftMint({
+				recipient: params.receiver,
+				amount: params.amount,
+				collection: params.collection,
+				token: params.token
+			})
+		case 'create_collection':
+			return buildNftCreateCollection({
+				collection: params.collection,
+				soulbound: params.soulbound === 'true'
+			})
+		default:
+			return undefined
 	}
 }

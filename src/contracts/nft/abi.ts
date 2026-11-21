@@ -55,7 +55,8 @@ export const NFT_ABI = {
 				{
 					name: 'soulbound',
 					type: 'string',
-					description: 'Soulbound flag — "true" to disable transfers, otherwise "false"'
+					description: 'Soulbound flag — "true" to disable transfers, otherwise "false"',
+					enum: ['true', 'false']
 				}
 			],
 			outputs: [],
