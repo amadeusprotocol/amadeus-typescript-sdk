@@ -4,7 +4,7 @@ import { createContract } from '../contracts/contract'
 import { TransactionBuilder } from '../transaction-builder'
 import { generateKeypair } from '../crypto'
 import { fromBase58 } from '../encoding'
-import { decode } from '../serialization'
+import { decode, encode } from '../serialization'
 
 const textBytes = (text: string): number[] => [...new TextEncoder().encode(text)]
 // VecPak binary term: type 0x05, one-byte varint length, then the bytes
@@ -125,5 +125,94 @@ describe('Nft builders', () => {
 		expect(() =>
 			nft.create_collection({ collection: 'CARDS', soulbound: 'false' })
 		).not.toThrow()
+	})
+})
+
+describe('createContract(NFT_ABI)', () => {
+	const recipient = generateKeypair().publicKey
+	const nft = createContract(NFT_ABI)
+	const sameBytes = (left: { args: unknown[] }, right: { args: unknown[] }) =>
+		expect(encode(left.args as never)).toEqual(encode(right.args as never))
+
+	it('transfer sends the receiver as 48 raw bytes, like buildNftTransfer', () => {
+		const call = nft.transfer({
+			receiver: recipient,
+			amount: '2',
+			collection: 'CARDS',
+			token: 'ace'
+		})
+		const helper = buildNftTransfer({
+			recipient,
+			amount: '2',
+			collection: 'CARDS',
+			token: 'ace'
+		})
+
+		expect(call).toEqual(helper)
+		expect((call.args[0] as Uint8Array).length).toBe(48)
+		sameBytes(call, helper)
+	})
+
+	it('mint sends the same VecPak map as buildNftMint', () => {
+		const call = nft.mint({
+			receiver: recipient,
+			amount: '3',
+			collection: 'CARDS',
+			token: 'ace'
+		})
+		const helper = buildNftMint({ recipient, amount: '3', collection: 'CARDS', token: 'ace' })
+
+		expect(call).toEqual(helper)
+		sameBytes(call, helper)
+	})
+
+	it('create_collection sends the same VecPak map as buildNftCreateCollection', () => {
+		for (const soulbound of [true, false]) {
+			const call = nft.create_collection({
+				collection: 'CARDS',
+				soulbound: String(soulbound)
+			})
+			const helper = buildNftCreateCollection({ collection: 'CARDS', soulbound })
+
+			expect(call).toEqual(helper)
+			sameBytes(call, helper)
+		}
+		expect(() => nft.create_collection({ collection: 'CARDS', soulbound: 'yes' })).toThrow(
+			/Expected one of: true, false/
+		)
+	})
+
+	it('connect() signs the same action args as the dedicated builders', () => {
+		const { privateKey } = generateKeypair()
+		const signed = nft.connect(privateKey)
+		const actionArgs = (packed: Uint8Array) =>
+			field(field(field(decode(packed), 'tx'), 'action'), 'args')
+
+		expect(
+			actionArgs(
+				signed.transfer({
+					receiver: recipient,
+					amount: '1',
+					collection: 'CARDS',
+					token: 'ace'
+				}).txPacked
+			)
+		).toEqual(
+			actionArgs(
+				TransactionBuilder.buildSignedNftTransfer({
+					senderPrivkey: privateKey,
+					recipient,
+					amount: '1',
+					collection: 'CARDS',
+					token: 'ace'
+				}).txPacked
+			)
+		)
+		expect(
+			actionArgs(
+				signed.mint({ receiver: recipient, amount: '1', collection: 'CARDS', token: 'ace' })
+					.txPacked
+			)
+		).toEqual(buildNftMint({ recipient, amount: '1', collection: 'CARDS', token: 'ace' }).args)
 	})
 })
